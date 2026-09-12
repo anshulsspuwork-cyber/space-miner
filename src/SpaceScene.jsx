@@ -1,2248 +1,1100 @@
-import React, {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-
+import React, { useEffect, useRef, useState } from "react";
 import * as BABYLON from "babylonjs";
-
-import "./Game.css";
 
 export default function SpaceScene({
   asteroids,
+  enemies = [],
+  enemyProjectiles = [],
   selectedAsteroid,
+  selectedEnemy = null,
   miningActive,
   miningProgress = 0,
   shipPosition,
   shipSpeed,
+  stationPosition,
   onAsteroidClick,
+  onEnemyClick,
+  onFireWeapon,
   onShipMove,
 }) {
   const canvasRef = useRef(null);
+  const asteroidsRef = useRef(asteroids || []);
+  const enemiesRef = useRef(enemies || []);
+  const enemyProjectilesRef = useRef(enemyProjectiles || []);
+  const selectedRef = useRef(selectedAsteroid);
+  const selectedEnemyRef = useRef(selectedEnemy);
+  const miningRef = useRef(miningActive);
+  const shipPositionRef = useRef(shipPosition || { x: 0, y: 0, z: 0 });
+  const shipSpeedRef = useRef(shipSpeed || 8);
+  const onAsteroidClickRef = useRef(onAsteroidClick);
+  const onEnemyClickRef = useRef(onEnemyClick);
+  const onFireWeaponRef = useRef(onFireWeapon);
+  const onShipMoveRef = useRef(onShipMove);
+  const [localTargetId, setLocalTargetId] = useState(selectedAsteroid ?? null);
+  const localTargetIdRef = useRef(selectedAsteroid ?? null);
+  const [localEnemyTargetId, setLocalEnemyTargetId] = useState(selectedEnemy ?? null);
+  const localEnemyTargetIdRef = useRef(selectedEnemy ?? null);
 
-  const asteroidsRef =
-    useRef(asteroids || []);
-
-  const selectedRef =
-    useRef(selectedAsteroid);
-
-  const miningRef =
-    useRef(miningActive);
-
-  const shipPositionRef =
-    useRef(shipPosition);
-
-  const shipSpeedRef =
-    useRef(shipSpeed);
-
-  const onAsteroidClickRef =
-    useRef(onAsteroidClick);
-
-  const onShipMoveRef =
-    useRef(onShipMove);
-
-  const [localTargetId, setLocalTargetId] =
-    useState(selectedAsteroid);
-
-  // =====================================================
-  // KEEP REACT DATA UPDATED
-  // =====================================================
-
+  useEffect(() => { asteroidsRef.current = asteroids || []; }, [asteroids]);
+  useEffect(() => { enemiesRef.current = enemies || []; }, [enemies]);
   useEffect(() => {
-    asteroidsRef.current =
-      asteroids || [];
-  }, [asteroids]);
-
-  useEffect(() => {
-    selectedRef.current =
-      selectedAsteroid;
+    selectedRef.current = selectedAsteroid;
+    if (selectedAsteroid !== null && selectedAsteroid !== undefined) {
+      localTargetIdRef.current = selectedAsteroid;
+      setLocalTargetId(selectedAsteroid);
+    }
   }, [selectedAsteroid]);
-
   useEffect(() => {
-    miningRef.current =
-      miningActive;
-  }, [miningActive]);
-
-  useEffect(() => {
-    shipPositionRef.current =
-      shipPosition;
-  }, [shipPosition]);
-
-  useEffect(() => {
-    shipSpeedRef.current =
-      shipSpeed;
-  }, [shipSpeed]);
-
-  useEffect(() => {
-    onAsteroidClickRef.current =
-      onAsteroidClick;
-  }, [onAsteroidClick]);
-
-  useEffect(() => {
-    onShipMoveRef.current =
-      onShipMove;
-  }, [onShipMove]);
-
-  // =====================================================
-  // CREATE 3D WORLD
-  // =====================================================
-
-  useEffect(() => {
-    const canvas =
-      canvasRef.current;
-
-    if (!canvas) {
-      return;
+    selectedEnemyRef.current = selectedEnemy;
+    if (selectedEnemy !== null && selectedEnemy !== undefined) {
+      localEnemyTargetIdRef.current = selectedEnemy;
+      setLocalEnemyTargetId(selectedEnemy);
     }
+  }, [selectedEnemy]);
+  useEffect(() => { miningRef.current = miningActive; }, [miningActive]);
+  useEffect(() => { shipPositionRef.current = shipPosition || { x: 0, y: 0, z: 0 }; }, [shipPosition]);
+  useEffect(() => { shipSpeedRef.current = shipSpeed || 8; }, [shipSpeed]);
+  useEffect(() => { onAsteroidClickRef.current = onAsteroidClick; }, [onAsteroidClick]);
+  useEffect(() => { onEnemyClickRef.current = onEnemyClick; }, [onEnemyClick]);
+  useEffect(() => { onFireWeaponRef.current = onFireWeapon; }, [onFireWeapon]);
+  useEffect(() => { onShipMoveRef.current = onShipMove; }, [onShipMove]);
 
-    // =====================================================
-    // BABYLON ENGINE
-    // =====================================================
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    const engine =
-      new BABYLON.Engine(
-        canvas,
-        true,
-        {
-          preserveDrawingBuffer: true,
-          stencil: true,
-          adaptToDeviceRatio: true,
-        }
-      );
+    const engine = new BABYLON.Engine(canvas, true, {
+      preserveDrawingBuffer: true,
+      stencil: true,
+      adaptToDeviceRatio: true,
+    });
+    const scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color4(0.002, 0.004, 0.015, 1);
 
-    const scene =
-      new BABYLON.Scene(engine);
-
-    scene.clearColor =
-      new BABYLON.Color4(
-        0.002,
-        0.004,
-        0.015,
-        1
-      );
-
-    // =====================================================
-    // CAMERA
-    // =====================================================
-
-    const camera =
-      new BABYLON.ArcRotateCamera(
-        "Camera",
-        -Math.PI / 2,
-        Math.PI / 2.7,
-        32,
-        BABYLON.Vector3.Zero(),
-        scene
-      );
-
-    camera.attachControl(
-      canvas,
-      true
+    const camera = new BABYLON.ArcRotateCamera(
+      "SpaceCamera",
+      -Math.PI / 2,
+      Math.PI / 2.8,
+      28,
+      BABYLON.Vector3.Zero(),
+      scene
     );
-
-    camera.lowerRadiusLimit = 12;
-    camera.upperRadiusLimit = 70;
-    camera.wheelPrecision = 45;
+    camera.attachControl(canvas, true);
+    camera.lowerRadiusLimit = 10;
+    camera.upperRadiusLimit = 65;
+    camera.wheelPrecision = 35;
     camera.panningSensibility = 0;
+    camera.minZ = 0.1;
 
-    // =====================================================
-    // LIGHTS
-    // =====================================================
+    const hemi = new BABYLON.HemisphericLight("SpaceLight", new BABYLON.Vector3(0, 1, 0), scene);
+    hemi.intensity = 1.15;
+    const shipLight = new BABYLON.PointLight("ShipLight", new BABYLON.Vector3(0, 3, 0), scene);
+    shipLight.intensity = 1.2;
+    shipLight.range = 18;
 
-    const hemiLight =
-      new BABYLON.HemisphericLight(
-        "SpaceLight",
-        new BABYLON.Vector3(
-          0,
-          1,
-          0
-        ),
-        scene
+    for (let i = 0; i < 500; i += 1) {
+      const star = BABYLON.MeshBuilder.CreateSphere(`Star${i}`, { diameter: 0.035 + Math.random() * 0.09 }, scene);
+      star.position = new BABYLON.Vector3(
+        (Math.random() - 0.5) * 180,
+        (Math.random() - 0.5) * 120,
+        (Math.random() - 0.5) * 180
       );
-
-    hemiLight.intensity = 1.2;
-
-    const pointLight =
-      new BABYLON.PointLight(
-        "ShipLight",
-        new BABYLON.Vector3(
-          0,
-          3,
-          0
-        ),
-        scene
-      );
-
-    pointLight.intensity = 1.5;
-
-    // =====================================================
-    // STARS
-    // =====================================================
-
-    for (
-      let i = 0;
-      i < 450;
-      i++
-    ) {
-      const star =
-        BABYLON.MeshBuilder.CreateSphere(
-          `Star${i}`,
-          {
-            diameter:
-              0.03 +
-              Math.random() * 0.1,
-          },
-          scene
-        );
-
-      star.position =
-        new BABYLON.Vector3(
-          (Math.random() - 0.5) *
-            150,
-
-          (Math.random() - 0.5) *
-            100,
-
-          (Math.random() - 0.5) *
-            150
-        );
-
-      const material =
-        new BABYLON.StandardMaterial(
-          `StarMaterial${i}`,
-          scene
-        );
-
-      material.emissiveColor =
-        new BABYLON.Color3(
-          1,
-          1,
-          1
-        );
-
-      material.disableLighting =
-        true;
-
-      star.material =
-        material;
+      const mat = new BABYLON.StandardMaterial(`StarMat${i}`, scene);
+      mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+      mat.disableLighting = true;
+      star.material = mat;
     }
 
-    // =====================================================
-    // PLAYER SHIP
-    // =====================================================
-
-    // Larger, recognizable player ship used as the main scale reference.
+    // ---------------- PLAYER SHIP ----------------
+    // The ship's nose is LOCAL +Z. This makes its orientation and movement easy to keep consistent.
     const ship = new BABYLON.TransformNode("PlayerShip", scene);
+    const p = shipPositionRef.current || { x: 0, y: 0, z: 0 };
+    ship.position = new BABYLON.Vector3(p.x || 0, p.y || 0, p.z || 0);
 
-    const initialPosition = shipPositionRef.current || { x: 0, y: 0, z: 0 };
-    ship.position = new BABYLON.Vector3(
-      initialPosition.x || 0,
-      initialPosition.y || 0,
-      initialPosition.z || 0
-    );
+    const hullMat = new BABYLON.StandardMaterial("ShipHullMat", scene);
+    hullMat.diffuseColor = new BABYLON.Color3(0.035, 0.32, 0.72);
+    hullMat.emissiveColor = new BABYLON.Color3(0.008, 0.07, 0.18);
 
-    const shipBody = BABYLON.MeshBuilder.CreateCylinder(
-      "PlayerShipBody",
-      { height: 5.2, diameterTop: 0.05, diameterBottom: 1.7, tessellation: 6 },
-      scene
-    );
-    shipBody.parent = ship;
-    shipBody.rotation.z = Math.PI / 2;
+    const hull = BABYLON.MeshBuilder.CreateCylinder("ShipHull", {
+      height: 4.8,
+      diameterTop: 0,
+      diameterBottom: 1.55,
+      tessellation: 6,
+    }, scene);
+    hull.parent = ship;
+    hull.rotation.x = Math.PI / 2;
+    hull.material = hullMat;
 
-    const shipMaterial = new BABYLON.StandardMaterial("ShipMaterial", scene);
-    shipMaterial.diffuseColor = new BABYLON.Color3(0.04, 0.48, 0.95);
-    shipMaterial.emissiveColor = new BABYLON.Color3(0.01, 0.12, 0.3);
-    shipBody.material = shipMaterial;
-
-    const cockpit = BABYLON.MeshBuilder.CreateSphere(
-      "ShipCockpit",
-      { diameter: 1.0, segments: 12 },
-      scene
-    );
+    const cockpitMat = new BABYLON.StandardMaterial("CockpitMat", scene);
+    cockpitMat.diffuseColor = new BABYLON.Color3(0.02, 0.1, 0.18);
+    cockpitMat.emissiveColor = new BABYLON.Color3(0, 0.28, 0.55);
+    const cockpit = BABYLON.MeshBuilder.CreateSphere("ShipCockpit", { diameter: 0.9, segments: 12 }, scene);
     cockpit.parent = ship;
-    cockpit.position = new BABYLON.Vector3(1.25, 0.32, 0);
-    cockpit.scaling = new BABYLON.Vector3(1.2, 0.45, 0.8);
+    cockpit.position = new BABYLON.Vector3(0, 0.3, 1.05);
+    cockpit.scaling = new BABYLON.Vector3(0.95, 0.5, 1.15);
+    cockpit.material = cockpitMat;
 
-    const cockpitMaterial = new BABYLON.StandardMaterial("CockpitMaterial", scene);
-    cockpitMaterial.diffuseColor = new BABYLON.Color3(0.02, 0.12, 0.2);
-    cockpitMaterial.emissiveColor = new BABYLON.Color3(0, 0.35, 0.65);
-    cockpit.material = cockpitMaterial;
+    const wingMat = new BABYLON.StandardMaterial("WingMat", scene);
+    wingMat.diffuseColor = new BABYLON.Color3(0.02, 0.16, 0.36);
+    const wingL = BABYLON.MeshBuilder.CreateBox("ShipWingL", { width: 2.5, height: 0.16, depth: 0.72 }, scene);
+    wingL.parent = ship;
+    wingL.position = new BABYLON.Vector3(-0.75, 0, 0.1);
+    wingL.rotation.y = -0.18;
+    wingL.material = wingMat;
+    const wingR = wingL.clone("ShipWingR");
+    wingR.parent = ship;
+    wingR.position.x = 0.75;
+    wingR.rotation.y = 0.18;
 
-    const wingMaterial = new BABYLON.StandardMaterial("WingMaterial", scene);
-    wingMaterial.diffuseColor = new BABYLON.Color3(0.025, 0.2, 0.42);
+    const noseMat = new BABYLON.StandardMaterial("ShipNoseMat", scene);
+    noseMat.emissiveColor = new BABYLON.Color3(0.05, 0.95, 1);
+    noseMat.disableLighting = true;
+    const nose = BABYLON.MeshBuilder.CreateSphere("ShipNoseLight", { diameter: 0.25 }, scene);
+    nose.parent = ship;
+    nose.position = new BABYLON.Vector3(0, 0, 2.25);
+    nose.material = noseMat;
 
-    const leftWing = BABYLON.MeshBuilder.CreateBox(
-      "ShipLeftWing",
-      { width: 2.6, height: 0.18, depth: 0.65 },
-      scene
-    );
-    leftWing.parent = ship;
-    leftWing.position = new BABYLON.Vector3(-0.15, 0, -1.05);
-    leftWing.rotation.y = -0.2;
-    leftWing.material = wingMaterial;
+    const engineMat = new BABYLON.StandardMaterial("EngineGlowMat", scene);
+    engineMat.emissiveColor = new BABYLON.Color3(0, 0.9, 1);
+    engineMat.disableLighting = true;
+    const engineGlow = BABYLON.MeshBuilder.CreateSphere("EngineGlow", { diameter: 0.75 }, scene);
+    engineGlow.parent = ship;
+    engineGlow.position = new BABYLON.Vector3(0, 0, -2.05);
+    engineGlow.material = engineMat;
 
-    const rightWing = leftWing.clone("ShipRightWing");
-    rightWing.parent = ship;
-    rightWing.position.z = 1.05;
-    rightWing.rotation.y = 0.2;
-
-    const noseLight = BABYLON.MeshBuilder.CreateSphere(
-      "ShipNoseLight",
-      { diameter: 0.28 },
-      scene
-    );
-    noseLight.parent = ship;
-    noseLight.position = new BABYLON.Vector3(2.45, 0, 0);
-    const noseMaterial = new BABYLON.StandardMaterial("ShipNoseMaterial", scene);
-    noseMaterial.emissiveColor = new BABYLON.Color3(0.1, 0.9, 1);
-    noseMaterial.disableLighting = true;
-    noseLight.material = noseMaterial;
-
-    // ENGINE GLOW
-    // =====================================================
-
-    const engineGlow =
-      BABYLON.MeshBuilder.CreateSphere(
-        "EngineGlow",
-        {
-          diameter: 0.8,
-        },
-        scene
-      );
-
-    engineGlow.parent =
-      ship;
-
-    engineGlow.position =
-      new BABYLON.Vector3(
-        -2,
-        0,
-        0
-      );
-
-    const engineMaterial =
-      new BABYLON.StandardMaterial(
-        "EngineMaterial",
-        scene
-      );
-
-    engineMaterial.emissiveColor =
-      new BABYLON.Color3(
-        0,
-        0.9,
-        1
-      );
-
-    engineMaterial.disableLighting =
-      true;
-
-    engineGlow.material =
-      engineMaterial;
-
-    // =====================================================
-    // PLAYER REFERENCE MARKER
-    // =====================================================
-
-    const shipRing = BABYLON.MeshBuilder.CreateTorus(
-      "PlayerReferenceRing",
-      { diameter: 6.2, thickness: 0.055, tessellation: 48 },
-      scene
-    );
+    const shipRing = BABYLON.MeshBuilder.CreateTorus("PlayerRing", { diameter: 5.5, thickness: 0.05, tessellation: 48 }, scene);
     shipRing.parent = ship;
     shipRing.rotation.x = Math.PI / 2;
+    const shipRingMat = new BABYLON.StandardMaterial("PlayerRingMat", scene);
+    shipRingMat.emissiveColor = new BABYLON.Color3(0, 0.8, 1);
+    shipRingMat.disableLighting = true;
+    shipRingMat.alpha = 0.7;
+    shipRing.material = shipRingMat;
 
-    const ringMaterial = new BABYLON.StandardMaterial("PlayerReferenceMaterial", scene);
-    ringMaterial.emissiveColor = new BABYLON.Color3(0, 0.85, 1);
-    ringMaterial.disableLighting = true;
-    ringMaterial.alpha = 0.75;
-    shipRing.material = ringMaterial;
+    const label = BABYLON.MeshBuilder.CreatePlane("PlayerLabel", { width: 4.2, height: 0.9 }, scene);
+    label.parent = ship;
+    label.position = new BABYLON.Vector3(0, 3, 0);
+    label.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+    const labelTex = new BABYLON.DynamicTexture("PlayerLabelTex", { width: 512, height: 128 }, scene, true);
+    labelTex.hasAlpha = true;
+    labelTex.drawText("YOU  •  PLAYER SHIP", 256, 78, "bold 42px Arial", "#8fffff", "transparent", true);
+    const labelMat = new BABYLON.StandardMaterial("PlayerLabelMat", scene);
+    labelMat.diffuseTexture = labelTex;
+    labelMat.opacityTexture = labelTex;
+    labelMat.emissiveTexture = labelTex;
+    labelMat.disableLighting = true;
+    labelMat.backFaceCulling = false;
+    label.material = labelMat;
 
-    const labelPlane = BABYLON.MeshBuilder.CreatePlane(
-      "PlayerShipLabel",
-      { width: 4.5, height: 1.1 },
-      scene
-    );
-    labelPlane.parent = ship;
-    labelPlane.position = new BABYLON.Vector3(0, 3.1, 0);
-    labelPlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
-
-    const labelTexture = new BABYLON.DynamicTexture(
-      "PlayerShipLabelTexture",
-      { width: 512, height: 128 },
-      scene,
-      true
-    );
-    labelTexture.hasAlpha = true;
-    labelTexture.drawText(
-      "YOU  •  PLAYER SHIP",
-      256,
-      78,
-      "bold 42px Arial",
-      "#8fffff",
-      "transparent",
-      true
-    );
-
-    const labelMaterial = new BABYLON.StandardMaterial(
-      "PlayerShipLabelMaterial",
-      scene
-    );
-    labelMaterial.diffuseTexture = labelTexture;
-    labelMaterial.opacityTexture = labelTexture;
-    labelMaterial.emissiveTexture = labelTexture;
-    labelMaterial.disableLighting = true;
-    labelMaterial.backFaceCulling = false;
-    labelPlane.material = labelMaterial;
-
-    // ASTEROID COLORS
-    // =====================================================
-
-    const asteroidColors = {
-      iron:
-        new BABYLON.Color3(
-          0.38,
-          0.36,
-          0.35
-        ),
-
-      copper:
-        new BABYLON.Color3(
-          0.65,
-          0.3,
-          0.12
-        ),
-
-      titanium:
-        new BABYLON.Color3(
-          0.18,
-          0.55,
-          0.75
-        ),
-
-      gold:
-        new BABYLON.Color3(
-          0.9,
-          0.65,
-          0.08
-        ),
-
-      crystal:
-        new BABYLON.Color3(
-          0.55,
-          0.18,
-          0.85
-        ),
-
-      uranium:
-        new BABYLON.Color3(
-          0.15,
-          0.8,
-          0.2
-        ),
+    const oreColors = {
+      iron: new BABYLON.Color3(0.38, 0.36, 0.35),
+      copper: new BABYLON.Color3(0.65, 0.3, 0.12),
+      titanium: new BABYLON.Color3(0.18, 0.55, 0.75),
+      gold: new BABYLON.Color3(0.9, 0.65, 0.08),
+      crystal: new BABYLON.Color3(0.55, 0.18, 0.85),
+      uranium: new BABYLON.Color3(0.15, 0.8, 0.2),
     };
 
-    // =====================================================
-    // ASTEROID STORAGE
-    // =====================================================
-
-    const asteroidMeshes =
-      new Map();
-
-    // =====================================================
-    // CREATE ASTEROID
-    // =====================================================
-
-    const createAsteroid =
-      (asteroid) => {
-        if (!asteroid) {
-          return null;
-        }
-
-        const mesh =
-          BABYLON.MeshBuilder.CreateIcoSphere(
-            `Asteroid${asteroid.id}`,
-            {
-              radius:
-                asteroid.size || 1.2,
-
-              subdivisions: 1,
-            },
-            scene
-          );
-
-        const position =
-          asteroid.position || {
-            x: 0,
-            y: 0,
-            z: 0,
-          };
-
-        mesh.position =
-          new BABYLON.Vector3(
-            position.x || 0,
-            position.y || 0,
-            position.z || 0
-          );
-
-        const rotation =
-          asteroid.rotation || {
-            x: 0,
-            y: 0,
-            z: 0,
-          };
-
-        mesh.rotation =
-          new BABYLON.Vector3(
-            rotation.x || 0,
-            rotation.y || 0,
-            rotation.z || 0
-          );
-
-        const material =
-          new BABYLON.StandardMaterial(
-            `AsteroidMaterial${asteroid.id}`,
-            scene
-          );
-
-        material.diffuseColor =
-          asteroidColors[
-            asteroid.oreType
-          ] ||
-          asteroidColors.iron;
-
-        material.specularColor =
-          new BABYLON.Color3(
-            0.2,
-            0.2,
-            0.2
-          );
-
-        mesh.material =
-          material;
-
-        mesh.metadata = {
-          asteroidId:
-            asteroid.id,
-        };
-
-        // =====================================================
-        // CLICK ASTEROID
-        // =====================================================
-
-        mesh.actionManager =
-          new BABYLON.ActionManager(
-            scene
-          );
-
-        mesh.actionManager.registerAction(
-          new BABYLON.ExecuteCodeAction(
-            BABYLON.ActionManager
-              .OnPickTrigger,
-
-            () => {
-              const current =
-                asteroidsRef.current.find(
-                  (item) =>
-                    item.id ===
-                    asteroid.id
-                );
-
-              if (
-                current &&
-                !current.mined
-              ) {
-                setLocalTargetId(
-                  current.id
-                );
-
-                onAsteroidClickRef.current(
-                  current.id
-                );
-              }
-            }
-          )
-        );
-
-        asteroidMeshes.set(
-          asteroid.id,
-          mesh
-        );
-
-        return mesh;
-      };
-
-    // =====================================================
-    // CREATE INITIAL ASTEROIDS
-    // =====================================================
-
-    (
-      asteroidsRef.current || []
-    ).forEach(
-      createAsteroid
-    );
-
-    // =====================================================
-    // LASER
-    // =====================================================
-
-    let laser = null;
-    let laserCore = null;
+    const asteroidMeshes = new Map();
+    const miningParticles = new Map();
+    let beam = null;
+    let beamCore = null;
+    let beamMaterial = null;
+    let beamCoreMaterial = null;
+    let weaponBeam = null;
+    let weaponBeamMaterial = null;
+    let weaponBeamUntil = 0;
+    let enemyTargetRing = null;
+    const enemyMeshes = new Map();
+    const enemyProjectileMeshes = new Map();
+    const enemyExplosionBursts = [];
     let targetRing = null;
+    let lastBurstIds = new Set();
+    const bursts = [];
 
-    const disposeLaser =
-      () => {
-        if (laser) {
-          laser.dispose();
-          laser = null;
-        }
-
-        if (laserCore) {
-          laserCore.dispose();
-          laserCore = null;
-        }
-
-        if (targetRing) {
-          targetRing.dispose();
-          targetRing = null;
-        }
-      };
-
-    const createLaser =
-      (targetMesh) => {
-        if (!targetMesh) {
-          return;
-        }
-
-        disposeLaser();
-
-        const start =
-          ship.position.clone();
-
-        const end =
-          targetMesh.position.clone();
-
-        const direction =
-          end.subtract(start);
-
-        const distance =
-          direction.length();
-
-        if (
-          distance < 0.001
-        ) {
-          return;
-        }
-
-        const normalized =
-          direction.normalize();
-
-        // =====================================================
-        // OUTER LASER
-        // =====================================================
-
-        laser =
-          BABYLON.MeshBuilder.CreateCylinder(
-            "MiningLaser",
-            {
-              height: distance,
-              diameter: 0.16,
-              tessellation: 12,
-            },
-            scene
-          );
-
-        laser.position =
-          start.add(
-            normalized.scale(
-              distance / 2
-            )
-          );
-
-        // =====================================================
-        // LASER ROTATION
-        //
-        // We DO NOT use:
-        // Quaternion.FromUnitVectors()
-        //
-        // That function does not exist in BabylonJS.
-        // =====================================================
-
-        const axis =
-          BABYLON.Vector3.Cross(
-            BABYLON.Axis.Y,
-            normalized
-          );
-
-        const dot =
-          BABYLON.Vector3.Dot(
-            BABYLON.Axis.Y,
-            normalized
-          );
-
-        const clamped =
-          Math.max(
-            -1,
-            Math.min(
-              1,
-              dot
-            )
-          );
-
-        const angle =
-          Math.acos(
-            clamped
-          );
-
-        if (
-          axis.length() >
-          0.0001
-        ) {
-          axis.normalize();
-
-          laser.rotationQuaternion =
-            BABYLON.Quaternion.RotationAxis(
-              axis,
-              angle
-            );
-        } else if (
-          dot < 0
-        ) {
-          laser.rotationQuaternion =
-            BABYLON.Quaternion.RotationAxis(
-              BABYLON.Axis.X,
-              Math.PI
-            );
-        }
-
-        const material =
-          new BABYLON.StandardMaterial(
-            "LaserMaterial",
-            scene
-          );
-
-        material.emissiveColor =
-          new BABYLON.Color3(
-            0,
-            0.9,
-            1
-          );
-
-        material.disableLighting =
-          true;
-
-        material.alpha =
-          0.9;
-
-        laser.material =
-          material;
-
-        // =====================================================
-        // INNER LASER
-        // =====================================================
-
-        laserCore =
-          BABYLON.MeshBuilder.CreateCylinder(
-            "MiningLaserCore",
-            {
-              height: distance,
-              diameter: 0.045,
-              tessellation: 8,
-            },
-            scene
-          );
-
-        laserCore.position =
-          laser.position.clone();
-
-        if (
-          laser.rotationQuaternion
-        ) {
-          laserCore.rotationQuaternion =
-            laser.rotationQuaternion.clone();
-        }
-
-        const coreMaterial =
-          new BABYLON.StandardMaterial(
-            "LaserCoreMaterial",
-            scene
-          );
-
-        coreMaterial.emissiveColor =
-          new BABYLON.Color3(
-            0.8,
-            1,
-            1
-          );
-
-        coreMaterial.disableLighting =
-          true;
-
-        laserCore.material =
-          coreMaterial;
-
-        // =====================================================
-        // TARGET RING
-        // =====================================================
-
-        targetRing =
-          BABYLON.MeshBuilder.CreateTorus(
-            "MiningTarget",
-            {
-              diameter: 3,
-              thickness: 0.08,
-              tessellation: 32,
-            },
-            scene
-          );
-
-        targetRing.position =
-          targetMesh.position.clone();
-
-        const ringMaterial =
-          new BABYLON.StandardMaterial(
-            "TargetMaterial",
-            scene
-          );
-
-        ringMaterial.emissiveColor =
-          new BABYLON.Color3(
-            0,
-            1,
-            0.7
-          );
-
-        ringMaterial.disableLighting =
-          true;
-
-        targetRing.material =
-          ringMaterial;
-      };
-
-    // =====================================================
-    // KEYBOARD CONTROLS
-    // =====================================================
-
-    const keys = {
-      forward: false,
-      backward: false,
-      left: false,
-      right: false,
-      up: false,
-      down: false,
+    const disposeWeaponBeam = () => {
+      if (weaponBeam) weaponBeam.dispose();
+      weaponBeam = null;
+      if (weaponBeamMaterial) weaponBeamMaterial.dispose();
+      weaponBeamMaterial = null;
+      weaponBeamUntil = 0;
     };
 
-    const clearKeys =
-      () => {
-        keys.forward = false;
-        keys.backward = false;
-        keys.left = false;
-        keys.right = false;
-        keys.up = false;
-        keys.down = false;
-      };
+    const showWeaponBeam = (enemyMesh) => {
+      if (!enemyMesh) return;
+      const yaw = ship.rotation.y;
+      const start = ship.position.add(new BABYLON.Vector3(Math.sin(yaw) * 2.2, 0, Math.cos(yaw) * 2.2));
+      const end = enemyMesh.getAbsolutePosition();
+      const direction = end.subtract(start);
+      const length = direction.length();
+      if (length < 0.01) return;
 
-    const keyDown =
-      (event) => {
-        switch (event.code) {
-          case "KeyW":
-          case "ArrowUp":
-            keys.forward = true;
-            break;
+      if (!weaponBeam) {
+        weaponBeam = BABYLON.MeshBuilder.CreateCylinder("WeaponBeam", { height: length, diameter: 0.12, tessellation: 10 }, scene);
+        weaponBeamMaterial = new BABYLON.StandardMaterial("WeaponBeamMat", scene);
+        weaponBeamMaterial.emissiveColor = new BABYLON.Color3(1, 0.25, 0.08);
+        weaponBeamMaterial.disableLighting = true;
+        weaponBeam.material = weaponBeamMaterial;
+      }
+      weaponBeam.setEnabled(true);
+      aimCylinder(weaponBeam, start, end);
+      weaponBeamUntil = performance.now() + 130;
+    };
 
-          case "KeyS":
-          case "ArrowDown":
-            keys.backward = true;
-            break;
+    const createEnemyExplosion = (mesh, id) => {
+      const material = new BABYLON.StandardMaterial(`EnemyExplosionMat${id}_${Date.now()}`, scene);
+      material.emissiveColor = new BABYLON.Color3(1, 0.25, 0.05);
+      material.disableLighting = true;
+      const pieces = [];
+      const center = mesh.position.clone();
+      for (let i = 0; i < 18; i += 1) {
+        const piece = BABYLON.MeshBuilder.CreatePolyhedron(`EnemyExplosion${id}_${i}`, { type: 1, size: 0.12 + Math.random() * 0.16 }, scene);
+        piece.position = center.clone();
+        piece.material = material;
+        const velocity = new BABYLON.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+        if (velocity.lengthSquared() < 0.01) velocity.z = 1;
+        velocity.normalize().scaleInPlace(3 + Math.random() * 5);
+        pieces.push({ mesh: piece, velocity });
+      }
+      enemyExplosionBursts.push({ pieces, material, time: performance.now() });
+    };
 
-          case "KeyA":
-          case "ArrowLeft":
-            keys.left = true;
-            break;
+    const makeEnemy = (enemy) => {
+      if (!enemy) return null;
+      const mesh = BABYLON.MeshBuilder.CreatePolyhedron(`Enemy${enemy.id}`, { type: 2, size: 1.35 }, scene);
+      const pos = enemy.position || { x: 0, y: 0, z: 0 };
+      mesh.position.set(pos.x || 0, pos.y || 0, pos.z || 0);
+      mesh.scaling.set(enemy.scale || 1, enemy.scale || 1, enemy.scale || 1);
+      const mat = new BABYLON.StandardMaterial(`EnemyMat${enemy.id}`, scene);
+      mat.diffuseColor = new BABYLON.Color3(0.55, 0.04, 0.04);
+      mat.emissiveColor = new BABYLON.Color3(0.22, 0.01, 0.01);
+      mesh.material = mat;
+      mesh.metadata = { enemyId: enemy.id, destroyed: false };
+      mesh.isPickable = true;
+      mesh.actionManager = new BABYLON.ActionManager(scene);
+      mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger, () => {
+        const id = mesh.metadata?.enemyId;
+        const current = enemiesRef.current.find((item) => item.id === id);
+        if (!current || current.destroyed) return;
+        localEnemyTargetIdRef.current = id;
+        setLocalEnemyTargetId(id);
+        if (onEnemyClickRef.current) onEnemyClickRef.current(id);
+      }));
+      enemyMeshes.set(enemy.id, mesh);
+      return mesh;
+    };
 
-          case "KeyD":
-          case "ArrowRight":
-            keys.right = true;
-            break;
+    const disposeEnemyTargetRing = () => {
+      if (enemyTargetRing) enemyTargetRing.dispose();
+      enemyTargetRing = null;
+    };
 
-          case "Space":
-            keys.up = true;
-            break;
+    const ensureEnemyTargetRing = (target) => {
+      if (!target || !target.isEnabled()) {
+        disposeEnemyTargetRing();
+        return;
+      }
+      if (!enemyTargetRing) {
+        enemyTargetRing = BABYLON.MeshBuilder.CreateTorus("EnemyTargetRing", { diameter: 3.2, thickness: 0.1, tessellation: 36 }, scene);
+        const mat = new BABYLON.StandardMaterial("EnemyTargetRingMat", scene);
+        mat.emissiveColor = new BABYLON.Color3(1, 0.12, 0.05);
+        mat.disableLighting = true;
+        enemyTargetRing.material = mat;
+      }
+      enemyTargetRing.position = target.position.clone();
+      enemyTargetRing.scaling.set(1.2, 1.2, 1.2);
+      enemyTargetRing.rotation.y += 0.035;
+    };
 
-          case "ShiftLeft":
-          case "ShiftRight":
-            keys.down = true;
-            break;
+    (enemiesRef.current || []).forEach(makeEnemy);
 
-          default:
-            return;
-        }
+    const makeAsteroid = (asteroid) => {
+      if (!asteroid) return null;
+      const mesh = BABYLON.MeshBuilder.CreateIcoSphere(`Asteroid${asteroid.id}`, {
+        radius: 1,
+        subdivisions: 1,
+      }, scene);
+      const pos = asteroid.position || { x: 0, y: 0, z: 0 };
+      mesh.position.set(pos.x || 0, pos.y || 0, pos.z || 0);
+      const rot = asteroid.rotation || { x: 0, y: 0, z: 0 };
+      mesh.rotation.set(rot.x || 0, rot.y || 0, rot.z || 0);
+      const mat = new BABYLON.StandardMaterial(`AsteroidMat${asteroid.id}`, scene);
+      mat.diffuseColor = oreColors[asteroid.oreType] || oreColors.iron;
+      mat.specularColor = new BABYLON.Color3(0.18, 0.18, 0.18);
+      mesh.material = mat;
+      mesh.metadata = { asteroidId: asteroid.id, lastMined: false, baseSize: asteroid.size || 1.2, originalOre: asteroid.ore || 1 };
+      mesh.isPickable = true;
+      mesh.actionManager = new BABYLON.ActionManager(scene);
+      mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger, () => {
+        const id = mesh.metadata?.asteroidId;
+        const current = asteroidsRef.current.find((a) => a.id === id);
+        if (!current || current.mined) return;
+        localTargetIdRef.current = id;
+        setLocalTargetId(id);
+        if (onAsteroidClickRef.current) onAsteroidClickRef.current(id);
+      }));
+      asteroidMeshes.set(asteroid.id, mesh);
+      return mesh;
+    };
 
-        // Prevent browser actions
-        // such as scrolling and
-        // activating buttons.
+    (asteroidsRef.current || []).forEach(makeAsteroid);
 
+    const disposeBeam = () => {
+      if (beam) beam.dispose();
+      if (beamCore) beamCore.dispose();
+      beam = null;
+      beamCore = null;
+      if (beamMaterial) beamMaterial.dispose();
+      if (beamCoreMaterial) beamCoreMaterial.dispose();
+      beamMaterial = null;
+      beamCoreMaterial = null;
+    };
+
+    const aimCylinder = (mesh, start, end) => {
+      const direction = end.subtract(start);
+      const length = direction.length();
+      if (length < 0.0001) return;
+
+      const dir = direction.scale(1 / length);
+      const up = BABYLON.Axis.Y;
+      const axis = BABYLON.Vector3.Cross(up, dir);
+      const dot = Math.max(-1, Math.min(1, BABYLON.Vector3.Dot(up, dir)));
+
+      mesh.position = start.add(end).scale(0.5);
+      mesh.scaling.y = length / mesh.getBoundingInfo().boundingBox.extendSize.y / 2;
+
+      if (axis.lengthSquared() > 0.000001) {
+        axis.normalize();
+        mesh.rotationQuaternion = BABYLON.Quaternion.RotationAxis(
+          axis,
+          Math.acos(dot)
+        );
+      } else if (dot < 0) {
+        mesh.rotationQuaternion = BABYLON.Quaternion.RotationAxis(
+          BABYLON.Axis.X,
+          Math.PI
+        );
+      } else {
+        mesh.rotationQuaternion = BABYLON.Quaternion.Identity();
+      }
+    };
+
+    const updateBeam = (target) => {
+      if (!target) {
+        disposeBeam();
+        return;
+      }
+
+      const yaw = ship.rotation.y;
+      const start = ship.position.add(
+        new BABYLON.Vector3(
+          Math.sin(yaw) * 2.15,
+          0,
+          Math.cos(yaw) * 2.15
+        )
+      );
+      const end = target.getAbsolutePosition();
+      const direction = end.subtract(start);
+      const distance = direction.length();
+      if (distance < 0.01) {
+        disposeBeam();
+        return;
+      }
+
+      if (!beam) {
+        beam = BABYLON.MeshBuilder.CreateCylinder(
+          "MiningBeam",
+          { height: distance, diameter: 0.17, tessellation: 12 },
+          scene
+        );
+        beamMaterial = new BABYLON.StandardMaterial("MiningBeamMat", scene);
+        beamMaterial.emissiveColor = new BABYLON.Color3(0, 0.8, 1);
+        beamMaterial.disableLighting = true;
+        beamMaterial.alpha = 0.85;
+        beam.material = beamMaterial;
+      }
+
+      if (!beamCore) {
+        beamCore = BABYLON.MeshBuilder.CreateCylinder(
+          "MiningBeamCore",
+          { height: distance, diameter: 0.055, tessellation: 8 },
+          scene
+        );
+        beamCoreMaterial = new BABYLON.StandardMaterial("MiningBeamCoreMat", scene);
+        beamCoreMaterial.emissiveColor = new BABYLON.Color3(0.8, 1, 1);
+        beamCoreMaterial.disableLighting = true;
+        beamCore.material = beamCoreMaterial;
+      }
+
+      aimCylinder(beam, start, end);
+      aimCylinder(beamCore, start, end);
+    };
+
+    const disposeTargetRing = () => {
+      if (targetRing) targetRing.dispose();
+      targetRing = null;
+    };
+
+    const ensureTargetRing = (target) => {
+      if (!target || !target.isEnabled()) {
+        disposeTargetRing();
+        return;
+      }
+      if (!targetRing) {
+        targetRing = BABYLON.MeshBuilder.CreateTorus("TargetRing", { diameter: 3, thickness: 0.08, tessellation: 36 }, scene);
+        const mat = new BABYLON.StandardMaterial("TargetRingMat", scene);
+        mat.emissiveColor = new BABYLON.Color3(0, 1, 0.65);
+        mat.disableLighting = true;
+        targetRing.material = mat;
+      }
+      targetRing.position = target.position.clone();
+      const size = Number(target.scaling.x || 1);
+      targetRing.scaling.set(size, size, size);
+      targetRing.rotation.z += 0.025;
+    };
+
+    const startMiningEffect = (mesh) => {
+      const id = mesh.metadata?.asteroidId;
+      if (id === undefined || miningParticles.has(id)) return;
+      const material = new BABYLON.StandardMaterial(`MineParticleMat${id}`, scene);
+      material.emissiveColor = new BABYLON.Color3(0, 1, 0.65);
+      material.disableLighting = true;
+      const particles = [];
+      for (let i = 0; i < 9; i += 1) {
+        const particle = BABYLON.MeshBuilder.CreateSphere(`MineParticle${id}_${i}`, { diameter: 0.08 }, scene);
+        particle.parent = mesh;
+        particle.material = material;
+        particles.push({ mesh: particle, phase: Math.random() * Math.PI * 2 });
+      }
+      miningParticles.set(id, { particles, material });
+    };
+
+    const stopMiningEffect = (id) => {
+      const effect = miningParticles.get(id);
+      if (!effect) return;
+      effect.particles.forEach((p) => p.mesh.dispose());
+      effect.material.dispose();
+      miningParticles.delete(id);
+    };
+
+    const createBurst = (mesh, id) => {
+      if (lastBurstIds.has(id)) return;
+      lastBurstIds.add(id);
+      const material = new BABYLON.StandardMaterial(`BurstMat${id}_${Date.now()}`, scene);
+      material.diffuseColor = new BABYLON.Color3(0.1, 0.8, 0.7);
+      material.emissiveColor = new BABYLON.Color3(0, 0.9, 0.6);
+      material.disableLighting = true;
+      const pieces = [];
+      const center = mesh.position.clone();
+      for (let i = 0; i < 14; i += 1) {
+        const piece = BABYLON.MeshBuilder.CreatePolyhedron(`Burst${id}_${i}`, { type: 1, size: 0.12 + Math.random() * 0.14 }, scene);
+        piece.position = center.clone();
+        piece.material = material;
+        const velocity = new BABYLON.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+        if (velocity.lengthSquared() < 0.01) velocity.z = 1;
+        velocity.normalize().scaleInPlace(2.5 + Math.random() * 4);
+        pieces.push({ mesh: piece, velocity });
+      }
+      bursts.push({ pieces, material, time: performance.now() });
+    };
+
+    // ---------------- SPACE STATION ----------------
+    const stationPos = stationPosition || { x: 0, y: 0, z: -22 };
+    const station = new BABYLON.TransformNode("MiningStation", scene);
+    station.position = new BABYLON.Vector3(stationPos.x || 0, stationPos.y || 0, stationPos.z || -22);
+
+    const stationBodyMat = new BABYLON.StandardMaterial("StationBodyMat", scene);
+    stationBodyMat.diffuseColor = new BABYLON.Color3(0.06, 0.1, 0.16);
+    stationBodyMat.emissiveColor = new BABYLON.Color3(0.015, 0.05, 0.09);
+
+    const stationGlowMat = new BABYLON.StandardMaterial("StationGlowMat", scene);
+    stationGlowMat.emissiveColor = new BABYLON.Color3(0, 0.85, 1);
+    stationGlowMat.disableLighting = true;
+
+    const stationCore = BABYLON.MeshBuilder.CreateCylinder("StationCore", {
+      height: 2.8,
+      diameter: 5.2,
+      tessellation: 32,
+    }, scene);
+    stationCore.parent = station;
+    stationCore.rotation.x = Math.PI / 2;
+    stationCore.material = stationBodyMat;
+
+    const stationRing = BABYLON.MeshBuilder.CreateTorus("StationRing", {
+      diameter: 9,
+      thickness: 0.32,
+      tessellation: 48,
+    }, scene);
+    stationRing.parent = station;
+    stationRing.rotation.x = Math.PI / 2;
+    stationRing.material = stationGlowMat;
+
+    const stationDock = BABYLON.MeshBuilder.CreateCylinder("StationDock", {
+      height: 0.35,
+      diameter: 6.5,
+      tessellation: 32,
+    }, scene);
+    stationDock.parent = station;
+    stationDock.position.z = 0.8;
+    stationDock.material = stationGlowMat;
+
+    const stationLightMat = new BABYLON.StandardMaterial("StationLightMat", scene);
+    stationLightMat.emissiveColor = new BABYLON.Color3(0.2, 1, 0.55);
+    stationLightMat.disableLighting = true;
+    for (let i = 0; i < 8; i += 1) {
+      const a = (Math.PI * 2 * i) / 8;
+      const light = BABYLON.MeshBuilder.CreateSphere(`StationLight${i}`, { diameter: 0.3 }, scene);
+      light.parent = station;
+      light.position.set(Math.cos(a) * 4.1, Math.sin(a) * 4.1, 0);
+      light.material = stationLightMat;
+    }
+
+    const stationLabel = BABYLON.MeshBuilder.CreatePlane("StationLabel", { width: 5.6, height: 1 }, scene);
+    stationLabel.parent = station;
+    stationLabel.position.y = 5.2;
+    stationLabel.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+    const stationLabelTex = new BABYLON.DynamicTexture("StationLabelTex", { width: 640, height: 128 }, scene, true);
+    stationLabelTex.hasAlpha = true;
+    stationLabelTex.drawText("MINING STATION", 320, 78, "bold 44px Arial", "#79ffff", "transparent", true);
+    const stationLabelMat = new BABYLON.StandardMaterial("StationLabelMat", scene);
+    stationLabelMat.diffuseTexture = stationLabelTex;
+    stationLabelMat.opacityTexture = stationLabelTex;
+    stationLabelMat.emissiveTexture = stationLabelTex;
+    stationLabelMat.disableLighting = true;
+    stationLabelMat.backFaceCulling = false;
+    stationLabel.material = stationLabelMat;
+
+    const dockingRing = BABYLON.MeshBuilder.CreateTorus("DockingRangeRing", {
+      diameter: 12,
+      thickness: 0.045,
+      tessellation: 64,
+    }, scene);
+    dockingRing.parent = station;
+    dockingRing.rotation.x = Math.PI / 2;
+    const dockingRingMat = new BABYLON.StandardMaterial("DockingRangeRingMat", scene);
+    dockingRingMat.emissiveColor = new BABYLON.Color3(0.1, 0.9, 0.65);
+    dockingRingMat.disableLighting = true;
+    dockingRingMat.alpha = 0.35;
+    dockingRing.material = dockingRingMat;
+
+    // ---------------- KEYBOARD ----------------
+    const keys = { forward: false, backward: false, left: false, right: false, up: false, down: false };
+    const clearKeys = () => Object.keys(keys).forEach((key) => { keys[key] = false; });
+    const setKey = (code, value, event) => {
+      let handled = true;
+      switch (code) {
+        case "KeyW": case "ArrowUp": keys.forward = value; break;
+        case "KeyS": case "ArrowDown": keys.backward = value; break;
+        case "KeyA": case "ArrowLeft": keys.left = value; break;
+        case "KeyD": case "ArrowRight": keys.right = value; break;
+        case "Space": keys.up = value; break;
+        case "ShiftLeft": case "ShiftRight": keys.down = value; break;
+        default: handled = false;
+      }
+      if (handled) {
         event.preventDefault();
         event.stopPropagation();
-      };
-
-    const keyUp =
-      (event) => {
-        switch (event.code) {
-          case "KeyW":
-          case "ArrowUp":
-            keys.forward = false;
-            break;
-
-          case "KeyS":
-          case "ArrowDown":
-            keys.backward = false;
-            break;
-
-          case "KeyA":
-          case "ArrowLeft":
-            keys.left = false;
-            break;
-
-          case "KeyD":
-          case "ArrowRight":
-            keys.right = false;
-            break;
-
-          case "Space":
-            keys.up = false;
-            break;
-
-          case "ShiftLeft":
-          case "ShiftRight":
-            keys.down = false;
-            break;
-
-          default:
-            return;
-        }
-
+      }
+    };
+    const keyDown = (event) => {
+      if (event.code === "KeyF") {
+        if (event.repeat) return;
         event.preventDefault();
         event.stopPropagation();
-      };
+        const id = selectedEnemyRef.current ?? localEnemyTargetIdRef.current;
+        if (id !== null && id !== undefined && onFireWeaponRef.current) {
+          const result = onFireWeaponRef.current(id);
+          if (result?.success) {
+            const mesh = enemyMeshes.get(id);
+            if (mesh) showWeaponBeam(mesh);
+          }
+        }
+        return;
+      }
+      setKey(event.code, true, event);
+    };
+    const keyUp = (event) => setKey(event.code, false, event);
+    window.addEventListener("keydown", keyDown, true);
+    window.addEventListener("keyup", keyUp, true);
+    window.addEventListener("blur", clearKeys);
 
-    window.addEventListener(
-      "keydown",
-      keyDown,
-      true
-    );
-
-    window.addEventListener(
-      "keyup",
-      keyUp,
-      true
-    );
-
-    window.addEventListener(
-      "blur",
-      clearKeys
-    );
-
-    // =====================================================
-    // MOBILE JOYSTICK
-    // =====================================================
-
-    let joystickActive =
-      false;
-
+    // ---------------- MOBILE CONTROLS ----------------
     let joystickX = 0;
     let joystickY = 0;
-
-    let joystickTouchId =
-      null;
-
-    const sceneContainer =
-      canvas.parentElement;
-
-    // =====================================================
-    // JOYSTICK
-    // =====================================================
-
-    const joystick =
-      document.createElement(
-        "div"
-      );
-
-    joystick.className =
-      "mobile-joystick";
-
-    joystick.innerHTML = `
-      <div class="joystick-ring">
-        <div class="joystick-knob"></div>
-      </div>
-    `;
-
-    const knob =
-      joystick.querySelector(
-        ".joystick-knob"
-      );
-
-    sceneContainer?.appendChild(
-      joystick
-    );
-
-    const updateJoystick =
-      (touch) => {
-        const ring =
-          joystick.querySelector(
-            ".joystick-ring"
-          );
-
-        if (!ring) {
-          return;
-        }
-
-        const rect =
-          ring.getBoundingClientRect();
-
-        const centerX =
-          rect.left +
-          rect.width / 2;
-
-        const centerY =
-          rect.top +
-          rect.height / 2;
-
-        let dx =
-          touch.clientX -
-          centerX;
-
-        let dy =
-          touch.clientY -
-          centerY;
-
-        const radius =
-          rect.width / 2;
-
-        const distance =
-          Math.sqrt(
-            dx * dx +
-            dy * dy
-          );
-
-        if (
-          distance > radius
-        ) {
-          dx =
-            (dx / distance) *
-            radius;
-
-          dy =
-            (dy / distance) *
-            radius;
-        }
-
-        joystickX =
-          dx / radius;
-
-        joystickY =
-          dy / radius;
-
-        if (knob) {
-          knob.style.transform =
-            `translate(${dx}px, ${dy}px)`;
-        }
-      };
-
-    const touchStart =
-      (event) => {
-        if (
-          joystickTouchId !==
-          null
-        ) {
-          return;
-        }
-
-        const touch =
-          event.changedTouches[0];
-
-        joystickTouchId =
-          touch.identifier;
-
-        joystickActive =
-          true;
-
-        updateJoystick(
-          touch
-        );
-
-        event.preventDefault();
-      };
-
-    const touchMove =
-      (event) => {
-        if (
-          !joystickActive
-        ) {
-          return;
-        }
-
-        for (
-          const touch of
-            event.changedTouches
-        ) {
-          if (
-            touch.identifier ===
-            joystickTouchId
-          ) {
-            updateJoystick(
-              touch
-            );
-
-            event.preventDefault();
-
-            break;
-          }
-        }
-      };
-
-    const touchEnd =
-      (event) => {
-        for (
-          const touch of
-            event.changedTouches
-        ) {
-          if (
-            touch.identifier ===
-            joystickTouchId
-          ) {
-            joystickTouchId =
-              null;
-
-            joystickActive =
-              false;
-
-            joystickX = 0;
-            joystickY = 0;
-
-            if (knob) {
-              knob.style.transform =
-                "translate(0px, 0px)";
-            }
-
-            break;
-          }
-        }
-      };
-
-    joystick.addEventListener(
-      "touchstart",
-      touchStart,
-      {
-        passive: false,
-      }
-    );
-
-    joystick.addEventListener(
-      "touchmove",
-      touchMove,
-      {
-        passive: false,
-      }
-    );
-
-    joystick.addEventListener(
-      "touchend",
-      touchEnd
-    );
-
-    joystick.addEventListener(
-      "touchcancel",
-      touchEnd
-    );
-
-    // =====================================================
-    // MOBILE UP / DOWN CONTROLS
-    // =====================================================
-
-    const verticalControls =
-      document.createElement(
-        "div"
-      );
-
-    verticalControls.className =
-      "mobile-vertical-controls";
-
-    verticalControls.innerHTML = `
-      <button
-        class="vertical-btn up-btn"
-        type="button"
-      >
-        ▲
-      </button>
-
-      <button
-        class="vertical-btn down-btn"
-        type="button"
-      >
-        ▼
-      </button>
-    `;
-
-    sceneContainer?.appendChild(
-      verticalControls
-    );
-
+    let joystickTouchId = null;
     let mobileUp = false;
     let mobileDown = false;
+    const root = canvas.parentElement;
+    const mobileLayer = document.createElement("div");
+    mobileLayer.style.cssText = "position:absolute;left:0;right:0;bottom:0;top:0;z-index:30;pointer-events:none;";
+    const joystick = document.createElement("div");
+    joystick.style.cssText = "position:absolute;left:22px;bottom:22px;width:120px;height:120px;border:2px solid rgba(0,255,220,.45);border-radius:50%;background:rgba(0,15,25,.28);pointer-events:auto;touch-action:none;";
+    const knob = document.createElement("div");
+    knob.style.cssText = "position:absolute;left:40px;top:40px;width:40px;height:40px;border-radius:50%;background:rgba(0,255,220,.55);box-shadow:0 0 18px rgba(0,255,220,.7);";
+    joystick.appendChild(knob);
+    const vertical = document.createElement("div");
+    vertical.style.cssText = "position:absolute;right:20px;bottom:25px;display:flex;flex-direction:column;gap:10px;pointer-events:auto;";
+    const makeButton = (text) => {
+      const b = document.createElement("button");
+      b.textContent = text;
+      b.style.cssText = "width:58px;height:52px;border:1px solid rgba(0,255,220,.5);border-radius:10px;background:rgba(0,12,22,.7);color:#bfffff;font-size:22px;font-weight:900;touch-action:none;";
+      return b;
+    };
+    const upButton = makeButton("▲");
+    const downButton = makeButton("▼");
+    vertical.appendChild(upButton); vertical.appendChild(downButton);
+    mobileLayer.appendChild(joystick); mobileLayer.appendChild(vertical);
+    root.appendChild(mobileLayer);
 
-    const upButton =
-      verticalControls.querySelector(
-        ".up-btn"
-      );
-
-    const downButton =
-      verticalControls.querySelector(
-        ".down-btn"
-      );
-
-    const startUp =
-      (event) => {
-        event.preventDefault();
-        mobileUp = true;
-      };
-
-    const stopUp =
-      (event) => {
-        event.preventDefault();
-        mobileUp = false;
-      };
-
-    const startDown =
-      (event) => {
-        event.preventDefault();
-        mobileDown = true;
-      };
-
-    const stopDown =
-      (event) => {
-        event.preventDefault();
-        mobileDown = false;
-      };
-
-    if (upButton) {
-      upButton.addEventListener(
-        "touchstart",
-        startUp,
-        {
-          passive: false,
+    const joystickUpdate = (touch) => {
+      const rect = joystick.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      let dx = (touch.clientX - cx) / (rect.width / 2);
+      let dy = (touch.clientY - cy) / (rect.height / 2);
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 1) { dx /= len; dy /= len; }
+      joystickX = dx;
+      joystickY = dy;
+      knob.style.transform = `translate(${dx * 35}px, ${dy * 35}px)`;
+    };
+    const joystickStart = (event) => {
+      const touch = event.changedTouches[0];
+      joystickTouchId = touch.identifier;
+      joystickUpdate(touch);
+      event.preventDefault();
+    };
+    const joystickMove = (event) => {
+      for (const touch of event.changedTouches) {
+        if (touch.identifier === joystickTouchId) {
+          joystickUpdate(touch);
+          event.preventDefault();
+          break;
         }
-      );
-
-      upButton.addEventListener(
-        "touchend",
-        stopUp
-      );
-
-      upButton.addEventListener(
-        "touchcancel",
-        stopUp
-      );
-
-      upButton.addEventListener(
-        "mousedown",
-        startUp
-      );
-
-      upButton.addEventListener(
-        "mouseup",
-        stopUp
-      );
-
-      upButton.addEventListener(
-        "mouseleave",
-        stopUp
-      );
-    }
-
-    if (downButton) {
-      downButton.addEventListener(
-        "touchstart",
-        startDown,
-        {
-          passive: false,
-        }
-      );
-
-      downButton.addEventListener(
-        "touchend",
-        stopDown
-      );
-
-      downButton.addEventListener(
-        "touchcancel",
-        stopDown
-      );
-
-      downButton.addEventListener(
-        "mousedown",
-        startDown
-      );
-
-      downButton.addEventListener(
-        "mouseup",
-        stopDown
-      );
-
-      downButton.addEventListener(
-        "mouseleave",
-        stopDown
-      );
-    }
-
-    // =====================================================
-    // MOVEMENT
-    // =====================================================
-
-    let lastFrame =
-      performance.now();
-
-    let lastReportedX =
-      ship.position.x;
-
-    let lastReportedY =
-      ship.position.y;
-
-    let lastReportedZ =
-      ship.position.z;
-
-    const updateMovement =
-      () => {
-        const now =
-          performance.now();
-
-        const delta =
-          Math.min(
-            0.05,
-            (now - lastFrame) /
-              1000
-          );
-
-        lastFrame =
-          now;
-
-        let forward = 0;
-        let strafe = 0;
-        let vertical = 0;
-
-        // =====================================================
-        // FORWARD / BACKWARD
-        // =====================================================
-
-        if (
-          keys.forward
-        ) {
-          forward += 1;
-        }
-
-        if (
-          keys.backward
-        ) {
-          forward -= 1;
-        }
-
-        // =====================================================
-        // LEFT / RIGHT
-        // =====================================================
-
-        if (
-          keys.left
-        ) {
-          strafe -= 1;
-        }
-
-        if (
-          keys.right
-        ) {
-          strafe += 1;
-        }
-
-        // =====================================================
-        // UP / DOWN
-        // =====================================================
-
-        if (
-          keys.up ||
-          mobileUp
-        ) {
-          vertical += 1;
-        }
-
-        if (
-          keys.down ||
-          mobileDown
-        ) {
-          vertical -= 1;
-        }
-
-        // =====================================================
-        // MOBILE JOYSTICK
-        // =====================================================
-
-        if (
-          Math.abs(
-            joystickY
-          ) > 0.05
-        ) {
-          forward =
-            -joystickY;
-        }
-
-        if (
-          Math.abs(
-            joystickX
-          ) > 0.05
-        ) {
-          strafe =
-            joystickX;
-        }
-
-        // =====================================================
-        // NORMALIZE MOVEMENT
-        // =====================================================
-
-        const movementLength =
-          Math.sqrt(
-            forward *
-              forward +
-              strafe *
-                strafe +
-              vertical *
-                vertical
-          );
-
-        if (
-          movementLength > 1
-        ) {
-          forward /=
-            movementLength;
-
-          strafe /=
-            movementLength;
-
-          vertical /=
-            movementLength;
-        }
-
-        // =====================================================
-        // MOVE SHIP — CAMERA RELATIVE
-        // =====================================================
-
-        if (forward !== 0 || strafe !== 0 || vertical !== 0) {
-          const speed = shipSpeedRef.current || 8;
-
-          // W always means forward from the current camera view.
-          // S is backward and A/D are camera-relative strafing.
-          let cameraForward = camera.target.subtract(camera.position);
-          cameraForward.y = 0;
-
-          if (cameraForward.lengthSquared() < 0.0001) {
-            cameraForward = new BABYLON.Vector3(0, 0, 1);
-          } else {
-            cameraForward.normalize();
-          }
-
-          const cameraRight = BABYLON.Vector3.Cross(
-            cameraForward,
-            BABYLON.Axis.Y
-          ).normalize();
-
-          const movement = cameraForward.scale(forward).add(
-            cameraRight.scale(strafe)
-          );
-
-          if (movement.lengthSquared() > 0.0001) {
-            movement.normalize();
-          }
-
-          ship.position.x += movement.x * speed * delta;
-          ship.position.z += movement.z * speed * delta;
-          ship.position.y += vertical * speed * delta;
-
-        // WORLD LIMITS
-          // =====================================================
-
-          ship.position.x =
-            Math.max(
-              -30,
-              Math.min(
-                30,
-                ship.position.x
-              )
-            );
-
-          ship.position.y =
-            Math.max(
-              -15,
-              Math.min(
-                15,
-                ship.position.y
-              )
-            );
-
-          ship.position.z =
-            Math.max(
-              -30,
-              Math.min(
-                30,
-                ship.position.z
-              )
-            );
-
-          // =====================================================
-          // SHIP ROTATION
-          // =====================================================
-
-          if (movement.lengthSquared() > 0.0001) {
-            // Ship hull points along local +X.
-            ship.rotation.y = Math.atan2(
-              movement.z,
-              movement.x
-            );
-          }
-
-          ship.rotation.x = -vertical * 0.25;
-
-          // =====================================================
-          // ENGINE EFFECT
-          // =====================================================
-
-          const pulse =
-            0.8 +
-            Math.sin(
-              now * 0.02
-            ) *
-              0.2;
-
-          engineGlow.scaling.x =
-            pulse;
-
-          engineGlow.scaling.y =
-            pulse;
-
-          engineGlow.scaling.z =
-            pulse;
-
-          // =====================================================
-          // SEND POSITION TO REACT
-          // =====================================================
-
-          const moved =
-            Math.abs(
-              ship.position.x -
-                lastReportedX
-            ) > 0.05 ||
-            Math.abs(
-              ship.position.y -
-                lastReportedY
-            ) > 0.05 ||
-            Math.abs(
-              ship.position.z -
-                lastReportedZ
-            ) > 0.05;
-
-          if (moved) {
-            lastReportedX =
-              ship.position.x;
-
-            lastReportedY =
-              ship.position.y;
-
-            lastReportedZ =
-              ship.position.z;
-
-            if (
-              onShipMoveRef.current
-            ) {
-              onShipMoveRef.current({
-                x: ship.position.x,
-                y: ship.position.y,
-                z: ship.position.z,
-              });
-            }
-          }
-        }
-
-        // =====================================================
-        // CAMERA FOLLOWS SHIP
-        // =====================================================
-
-        camera.target =
-          ship.position.clone();
-      };
-
-    // =====================================================
-    // RENDER LOOP
-    // =====================================================
-
-    engine.runRenderLoop(
-      () => {
-        updateMovement();
-
-        const currentAsteroids =
-          asteroidsRef.current ||
-          [];
-
-        // =====================================================
-        // UPDATE ASTEROIDS
-        // =====================================================
-
-        currentAsteroids.forEach(
-          (asteroid) => {
-            if (!asteroid) {
-              return;
-            }
-
-            let mesh =
-              asteroidMeshes.get(
-                asteroid.id
-              );
-
-            // New asteroid
-            if (!mesh) {
-              mesh =
-                createAsteroid(
-                  asteroid
-                );
-            }
-
-            if (!mesh) {
-              return;
-            }
-
-            const position =
-              asteroid.position || {
-                x: 0,
-                y: 0,
-                z: 0,
-              };
-
-            mesh.position =
-              new BABYLON.Vector3(
-                position.x || 0,
-                position.y || 0,
-                position.z || 0
-              );
-
-            // =====================================================
-            // MINED ASTEROID
-            // =====================================================
-
-            if (
-              asteroid.mined
-            ) {
-              mesh.setEnabled(
-                false
-              );
-            } else {
-              mesh.setEnabled(
-                true
-              );
-
-              const size =
-                asteroid.size ||
-                1.2;
-
-              mesh.scaling =
-                new BABYLON.Vector3(
-                  size,
-                  size,
-                  size
-                );
-
-              const material =
-                mesh.material;
-
-              if (
-                material
-              ) {
-                material.diffuseColor =
-                  asteroidColors[
-                    asteroid.oreType
-                  ] ||
-                  asteroidColors.iron;
-              }
-            }
-
-            // =====================================================
-            // ASTEROID ROTATION
-            // =====================================================
-
-            if (
-              !asteroid.mined
-            ) {
-              mesh.rotation.x +=
-                0.001;
-
-              mesh.rotation.y +=
-                0.002;
-            }
-          }
-        );
-
-        // =====================================================
-        // MINING LASER
-        // =====================================================
-
-        const targetId =
-          selectedRef.current;
-
-        if (
-          miningRef.current &&
-          targetId !== null &&
-          targetId !== undefined
-        ) {
-          const target =
-            asteroidMeshes.get(
-              targetId
-            );
-
-          if (
-            target &&
-            target.isEnabled()
-          ) {
-            createLaser(
-              target
-            );
-
-            if (
-              targetRing
-            ) {
-              targetRing.position =
-                target.position.clone();
-
-              targetRing.rotation.z +=
-                0.025;
-            }
-          }
-        } else {
-          disposeLaser();
-        }
-
-        // =====================================================
-        // ENGINE GLOW
-        // =====================================================
-
-        const pulse =
-          0.85 +
-          Math.sin(
-            performance.now() *
-              0.01
-          ) *
-            0.15;
-
-        engineGlow.scaling =
-          new BABYLON.Vector3(
-            pulse,
-            pulse,
-            pulse
-          );
-
-        // =====================================================
-        // RENDER
-        // =====================================================
-
-        scene.render();
       }
-    );
-
-    // =====================================================
-    // RESIZE
-    // =====================================================
-
-    const resize =
-      () => {
-        engine.resize();
+    };
+    const joystickEnd = (event) => {
+      for (const touch of event.changedTouches) {
+        if (touch.identifier === joystickTouchId) {
+          joystickTouchId = null;
+          joystickX = 0; joystickY = 0;
+          knob.style.transform = "translate(0, 0)";
+          event.preventDefault();
+          break;
+        }
+      }
+    };
+    joystick.addEventListener("touchstart", joystickStart, { passive: false });
+    joystick.addEventListener("touchmove", joystickMove, { passive: false });
+    joystick.addEventListener("touchend", joystickEnd, { passive: false });
+    joystick.addEventListener("touchcancel", joystickEnd, { passive: false });
+    const bindHold = (button, setter) => {
+      const start = (e) => { setter(true); e.preventDefault(); };
+      const end = (e) => { setter(false); e.preventDefault(); };
+      button.addEventListener("touchstart", start, { passive: false });
+      button.addEventListener("touchend", end, { passive: false });
+      button.addEventListener("touchcancel", end, { passive: false });
+      return () => {
+        button.removeEventListener("touchstart", start);
+        button.removeEventListener("touchend", end);
+        button.removeEventListener("touchcancel", end);
       };
+    };
+    const unbindUp = bindHold(upButton, (v) => { mobileUp = v; });
+    const unbindDown = bindHold(downButton, (v) => { mobileDown = v; });
 
-    window.addEventListener(
-      "resize",
-      resize
-    );
+    let lastTime = performance.now();
+    let lastReported = { x: ship.position.x, y: ship.position.y, z: ship.position.z };
+    let lastPropPosition = { ...lastReported };
 
-    // =====================================================
-    // CLEANUP
-    // =====================================================
+    const updateMovement = () => {
+      const now = performance.now();
+      const delta = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
+      lastTime = now;
+
+      // If React changed the position externally (sector travel, load, etc.), sync the 3D ship.
+      const prop = shipPositionRef.current || { x: 0, y: 0, z: 0 };
+      const propChanged = Math.abs((prop.x || 0) - lastPropPosition.x) > 0.2 || Math.abs((prop.y || 0) - lastPropPosition.y) > 0.2 || Math.abs((prop.z || 0) - lastPropPosition.z) > 0.2;
+      const recentlyReported = Math.abs((prop.x || 0) - lastReported.x) < 0.2 && Math.abs((prop.y || 0) - lastReported.y) < 0.2 && Math.abs((prop.z || 0) - lastReported.z) < 0.2;
+      if (propChanged && !recentlyReported) ship.position.set(prop.x || 0, prop.y || 0, prop.z || 0);
+      lastPropPosition = { x: prop.x || 0, y: prop.y || 0, z: prop.z || 0 };
+
+      let forward = (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0);
+      let strafe = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+      let verticalMove = (keys.up || mobileUp ? 1 : 0) - (keys.down || mobileDown ? 1 : 0);
+      if (Math.abs(joystickY) > 0.05) forward = -joystickY;
+      if (Math.abs(joystickX) > 0.05) strafe = joystickX;
+
+      const length = Math.sqrt(forward * forward + strafe * strafe + verticalMove * verticalMove);
+      if (length > 1) { forward /= length; strafe /= length; verticalMove /= length; }
+
+      if (Math.abs(forward) > 0.001 || Math.abs(strafe) > 0.001 || Math.abs(verticalMove) > 0.001) {
+        // Camera-relative horizontal basis.
+        let cameraForward = camera.target.subtract(camera.position);
+        cameraForward.y = 0;
+        if (cameraForward.lengthSquared() < 0.000001) cameraForward.set(0, 0, 1);
+        else cameraForward.normalize();
+        let cameraRight = BABYLON.Vector3.Cross(BABYLON.Axis.Y, cameraForward);
+        if (cameraRight.lengthSquared() < 0.000001) cameraRight.set(1, 0, 0);
+        else cameraRight.normalize();
+
+        const horizontal = cameraForward.scale(forward).add(cameraRight.scale(strafe));
+        if (horizontal.lengthSquared() > 0.000001) horizontal.normalize();
+        const speed = Number(shipSpeedRef.current) || 8;
+        ship.position.x += horizontal.x * speed * delta;
+        ship.position.z += horizontal.z * speed * delta;
+        ship.position.y += verticalMove * speed * delta;
+
+        ship.position.x = Math.max(-30, Math.min(30, ship.position.x));
+        ship.position.y = Math.max(-15, Math.min(15, ship.position.y));
+        ship.position.z = Math.max(-30, Math.min(30, ship.position.z));
+
+        if (horizontal.lengthSquared() > 0.000001) {
+          // Ship nose is +Z, so atan2(x,z) points the nose in the travel direction.
+          ship.rotation.y = Math.atan2(horizontal.x, horizontal.z);
+        }
+        ship.rotation.x = -verticalMove * 0.18;
+      }
+
+      const pulse = 0.8 + Math.sin(now * 0.02) * 0.2;
+      engineGlow.scaling.set(pulse, pulse, pulse);
+      camera.target = ship.position.clone();
+
+      // Animate the station so it is easy to spot while flying.
+      stationRing.rotation.z += 0.004;
+      dockingRing.rotation.z -= 0.002;
+
+      const moved = Math.abs(ship.position.x - lastReported.x) > 0.05 || Math.abs(ship.position.y - lastReported.y) > 0.05 || Math.abs(ship.position.z - lastReported.z) > 0.05;
+      if (moved && onShipMoveRef.current) {
+        lastReported = { x: ship.position.x, y: ship.position.y, z: ship.position.z };
+        onShipMoveRef.current(lastReported);
+      }
+    };
+
+    const render = () => {
+      updateMovement();
+      const current = asteroidsRef.current || [];
+
+      current.forEach((asteroid) => {
+        let mesh = asteroidMeshes.get(asteroid.id);
+        if (!mesh) mesh = makeAsteroid(asteroid);
+        if (!mesh) return;
+
+        const pos = asteroid.position || { x: 0, y: 0, z: 0 };
+        mesh.position.set(pos.x || 0, pos.y || 0, pos.z || 0);
+
+        if (asteroid.mined) {
+          if (!mesh.metadata.lastMined) createBurst(mesh, asteroid.id);
+          mesh.metadata.lastMined = true;
+          stopMiningEffect(asteroid.id);
+          mesh.setEnabled(false);
+          return;
+        }
+
+        if (mesh.metadata.lastMined) {
+          // Same mesh is reused when GameEngine respawns the asteroid.
+          mesh.metadata.lastMined = false;
+          mesh.metadata.baseSize = asteroid.size || 1.2;
+          mesh.metadata.originalOre = asteroid.ore || 1;
+          mesh.rotation.set(asteroid.rotation?.x || 0, asteroid.rotation?.y || 0, asteroid.rotation?.z || 0);
+        }
+        mesh.setEnabled(true);
+        mesh.metadata.baseSize = asteroid.size || mesh.metadata.baseSize || 1.2;
+        mesh.metadata.originalOre = asteroid.ore || mesh.metadata.originalOre || 1;
+        const ratio = Math.max(0.25, Math.min(1, (asteroid.remainingOre || 0) / (mesh.metadata.originalOre || 1)));
+        const visualSize = (mesh.metadata.baseSize || 1.2) * (0.72 + ratio * 0.28);
+        mesh.scaling.set(visualSize, visualSize, visualSize);
+        mesh.rotation.x += 0.001;
+        mesh.rotation.y += 0.0015;
+        const mat = mesh.material;
+        if (mat) {
+          mat.diffuseColor = oreColors[asteroid.oreType] || oreColors.iron;
+          const target = selectedRef.current === asteroid.id;
+          mat.emissiveColor = miningRef.current && target ? new BABYLON.Color3(0.02, 0.3, 0.2) : target ? new BABYLON.Color3(0.01, 0.08, 0.06) : new BABYLON.Color3(0, 0, 0);
+        }
+      });
+
+      // ---------------- ENEMIES ----------------
+      const currentEnemies = enemiesRef.current || [];
+      currentEnemies.forEach((enemy) => {
+        let mesh = enemyMeshes.get(enemy.id);
+        if (!mesh) mesh = makeEnemy(enemy);
+        if (!mesh) return;
+
+        const pos = enemy.position || { x: 0, y: 0, z: 0 };
+        mesh.position.set(pos.x || 0, pos.y || 0, pos.z || 0);
+        if (enemy.destroyed || enemy.health <= 0) {
+          if (!mesh.metadata.destroyed) {
+            mesh.metadata.destroyed = true;
+            createEnemyExplosion(mesh, enemy.id);
+          }
+          mesh.setEnabled(false);
+          return;
+        }
+
+        mesh.metadata.destroyed = false;
+        mesh.setEnabled(true);
+        const scale = enemy.scale || 1;
+        mesh.scaling.set(scale, scale, scale);
+        mesh.rotation.x += 0.006;
+        mesh.rotation.y += 0.01;
+        const mat = mesh.material;
+        if (mat) {
+          const target = selectedEnemyRef.current === enemy.id || localEnemyTargetIdRef.current === enemy.id;
+          mat.emissiveColor = target ? new BABYLON.Color3(0.6, 0.03, 0.01) : new BABYLON.Color3(0.18, 0.01, 0.01);
+        }
+      });
+
+      // ---------------- ENEMY PROJECTILES ----------------
+      const currentProjectiles = enemyProjectilesRef.current || [];
+      const projectileIds = new Set(currentProjectiles.map((projectile) => projectile.id));
+      currentProjectiles.forEach((projectile) => {
+        let mesh = enemyProjectileMeshes.get(projectile.id);
+        if (!mesh) {
+          mesh = BABYLON.MeshBuilder.CreateSphere(`EnemyProjectile${projectile.id}`, { diameter: 0.28, segments: 8 }, scene);
+          const mat = new BABYLON.StandardMaterial(`EnemyProjectileMat${projectile.id}`, scene);
+          mat.emissiveColor = new BABYLON.Color3(1, 0.08, 0.03);
+          mat.diffuseColor = new BABYLON.Color3(0.8, 0.03, 0.01);
+          mat.disableLighting = true;
+          mesh.material = mat;
+          enemyProjectileMeshes.set(projectile.id, mesh);
+        }
+        const pos = projectile.position || { x: 0, y: 0, z: 0 };
+        mesh.position.set(pos.x || 0, pos.y || 0, pos.z || 0);
+        mesh.scaling.setAll(1 + Math.sin(performance.now() * 0.02) * 0.15);
+      });
+      enemyProjectileMeshes.forEach((mesh, id) => {
+        if (!projectileIds.has(id)) {
+          mesh.dispose();
+          enemyProjectileMeshes.delete(id);
+        }
+      });
+
+      const enemyIds = new Set(currentEnemies.map((enemy) => enemy.id));
+      enemyMeshes.forEach((mesh, id) => {
+        if (!enemyIds.has(id)) {
+          mesh.dispose();
+          enemyMeshes.delete(id);
+        }
+      });
+
+      const enemyTargetId = selectedEnemyRef.current ?? localEnemyTargetIdRef.current;
+      const enemyTarget = enemyTargetId !== null && enemyTargetId !== undefined ? enemyMeshes.get(enemyTargetId) : null;
+      ensureEnemyTargetRing(enemyTarget);
+
+      if (weaponBeam && performance.now() > weaponBeamUntil) {
+        disposeWeaponBeam();
+      }
+
+      for (let i = enemyExplosionBursts.length - 1; i >= 0; i -= 1) {
+        const burst = enemyExplosionBursts[i];
+        const age = (performance.now() - burst.time) / 1000;
+        burst.pieces.forEach((piece) => {
+          piece.mesh.position.addInPlace(piece.velocity.scale(0.016));
+          piece.velocity.scaleInPlace(0.94);
+          piece.mesh.rotation.x += 0.08;
+          piece.mesh.rotation.y += 0.07;
+        });
+        burst.material.alpha = Math.max(0, 1 - age * 1.5);
+        if (age > 0.7) {
+          burst.pieces.forEach((piece) => piece.mesh.dispose());
+          burst.material.dispose();
+          enemyExplosionBursts.splice(i, 1);
+        }
+      }
+
+      // Remove meshes belonging to asteroids that no longer exist in the current sector.
+      const ids = new Set(current.map((a) => a.id));
+      asteroidMeshes.forEach((mesh, id) => {
+        if (!ids.has(id)) {
+          stopMiningEffect(id);
+          mesh.dispose();
+          asteroidMeshes.delete(id);
+        }
+      });
+
+      const targetId = selectedRef.current ?? localTargetIdRef.current;
+      const target = targetId !== null && targetId !== undefined ? asteroidMeshes.get(targetId) : null;
+      ensureTargetRing(target);
+      if (miningRef.current && target && target.isEnabled()) {
+        startMiningEffect(target);
+        updateBeam(target);
+      } else {
+        if (targetId !== null && targetId !== undefined) stopMiningEffect(targetId);
+        disposeBeam();
+      }
+
+      miningParticles.forEach((effect, id) => {
+        effect.particles.forEach((particle, index) => {
+          const angle = nowAngle(performance.now(), index);
+          const radius = 0.75 + Math.sin(performance.now() * 0.004 + index) * 0.12;
+          particle.mesh.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, Math.sin(angle * 1.4) * 0.5);
+        });
+      });
+
+      const now = performance.now();
+      for (let i = bursts.length - 1; i >= 0; i -= 1) {
+        const burst = bursts[i];
+        const age = (now - burst.time) / 1000;
+        burst.pieces.forEach((piece) => {
+          piece.mesh.position.addInPlace(piece.velocity.scale(0.016));
+          piece.velocity.scaleInPlace(0.94);
+          piece.mesh.rotation.x += 0.06;
+          piece.mesh.rotation.y += 0.08;
+        });
+        burst.material.alpha = Math.max(0, 1 - age * 1.6);
+        if (age > 0.65) {
+          burst.pieces.forEach((piece) => piece.mesh.dispose());
+          burst.material.dispose();
+          bursts.splice(i, 1);
+        }
+      }
+
+      scene.render();
+    };
+
+    const nowAngle = (now, index) => now * 0.003 + index;
+    engine.runRenderLoop(render);
+
+    const resize = () => engine.resize();
+    window.addEventListener("resize", resize);
 
     return () => {
-      window.removeEventListener(
-        "keydown",
-        keyDown,
-        true
-      );
-
-      window.removeEventListener(
-        "keyup",
-        keyUp,
-        true
-      );
-
-      window.removeEventListener(
-        "blur",
-        clearKeys
-      );
-
-      window.removeEventListener(
-        "resize",
-        resize
-      );
-
-      joystick.remove();
-
-      verticalControls.remove();
-
-      disposeLaser();
-
+      engine.stopRenderLoop(render);
+      window.removeEventListener("keydown", keyDown, true);
+      window.removeEventListener("keyup", keyUp, true);
+      window.removeEventListener("blur", clearKeys);
+      window.removeEventListener("resize", resize);
+      joystick.removeEventListener("touchstart", joystickStart);
+      joystick.removeEventListener("touchmove", joystickMove);
+      joystick.removeEventListener("touchend", joystickEnd);
+      joystick.removeEventListener("touchcancel", joystickEnd);
+      unbindUp();
+      unbindDown();
+      mobileLayer.remove();
+      disposeBeam();
+      disposeWeaponBeam();
+      disposeTargetRing();
+      disposeEnemyTargetRing();
+      miningParticles.forEach((effect) => {
+        effect.particles.forEach((particle) => particle.mesh.dispose());
+        effect.material.dispose();
+      });
+      bursts.forEach((burst) => {
+        burst.pieces.forEach((piece) => piece.mesh.dispose());
+        burst.material.dispose();
+      });
+      enemyExplosionBursts.forEach((burst) => {
+        burst.pieces.forEach((piece) => piece.mesh.dispose());
+        burst.material.dispose();
+      });
+      enemyMeshes.forEach((mesh) => mesh.dispose());
+      asteroidMeshes.forEach((mesh) => mesh.dispose());
+      station.dispose();
+      scene.dispose();
       engine.dispose();
     };
-  }, []);
+  }, [stationPosition]);
 
-  // =====================================================
-  // TARGET DATA FOR HUD
-  // =====================================================
-
-  const displayTargetId =
-    selectedAsteroid !== null &&
-    selectedAsteroid !== undefined
-      ? selectedAsteroid
-      : localTargetId;
-
-  const targetAsteroid =
-    displayTargetId !== null &&
-    displayTargetId !== undefined
-      ? (asteroids || []).find(
-          (asteroid) =>
-            asteroid.id === displayTargetId
-        )
-      : null;
-
-  const targetOre =
-    targetAsteroid?.oreType || "iron";
-
-  const targetDistance =
-    targetAsteroid && shipPosition
-      ? Math.sqrt(
-          Math.pow(
-            (shipPosition.x || 0) -
-              (targetAsteroid.position?.x || 0),
-            2
-          ) +
-            Math.pow(
-              (shipPosition.y || 0) -
-                (targetAsteroid.position?.y || 0),
-              2
-            ) +
-            Math.pow(
-              (shipPosition.z || 0) -
-                (targetAsteroid.position?.z || 0),
-              2
-            )
-        )
-      : null;
-
-  // =====================================================
-  // UI
-  // =====================================================
+  const stationPos = stationPosition || { x: 0, y: 0, z: -22 };
+  const targetId = selectedAsteroid ?? localTargetId;
+  const target = (asteroids || []).find((asteroid) => asteroid.id === targetId) || null;
+  const enemyTargetId = selectedEnemy ?? localEnemyTargetId;
+  const enemyTarget = (enemies || []).find((enemy) => enemy.id === enemyTargetId) || null;
+  const distance = target && shipPosition ? Math.sqrt(
+    Math.pow((shipPosition.x || 0) - (target.position?.x || 0), 2) +
+    Math.pow((shipPosition.y || 0) - (target.position?.y || 0), 2) +
+    Math.pow((shipPosition.z || 0) - (target.position?.z || 0), 2)
+  ) : null;
+  const progress = target && target.remainingOre > 0 ? Math.min(100, (miningProgress / target.remainingOre) * 100) : 0;
 
   return (
-    <div
-      className="space-scene"
-      style={{
-        position: "relative",
-        width: "100%",
-        height: "100%",
-        minHeight: "0",
-        overflow: "hidden",
-        touchAction: "none",
-      }}
-    >
-      <canvas
-        ref={canvasRef}
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "block",
-          touchAction: "none",
-        }}
-      />
+    <div className="space-scene" style={{ position: "relative", width: "100%", height: "100%", minHeight: 0, overflow: "hidden", touchAction: "none" }}>
+      <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }} />
 
-      {/* =================================================
-          CENTER CROSSHAIR
-      ================================================== */}
-
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          width: "34px",
-          height: "34px",
-          transform: "translate(-50%, -50%)",
-          zIndex: 20,
-          pointerEvents: "none",
-        }}
-      >
-        <span
-          style={{
-            position: "absolute",
-            left: "0",
-            top: "50%",
-            width: "34px",
-            height: "1px",
-            background: "rgba(0,255,220,0.85)",
-            boxShadow: "0 0 5px rgba(0,255,220,0.8)",
-          }}
-        />
-        <span
-          style={{
-            position: "absolute",
-            top: "0",
-            left: "50%",
-            width: "1px",
-            height: "34px",
-            background: "rgba(0,255,220,0.85)",
-            boxShadow: "0 0 5px rgba(0,255,220,0.8)",
-          }}
-        />
-        <span
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            width: "5px",
-            height: "5px",
-            transform: "translate(-50%, -50%)",
-            borderRadius: "50%",
-            background: "#00ffdc",
-            boxShadow: "0 0 8px #00ffdc",
-          }}
-        />
+      <div style={{ position: "absolute", left: "50%", top: "50%", width: 34, height: 34, transform: "translate(-50%,-50%)", pointerEvents: "none", zIndex: 10 }}>
+        <div style={{ position: "absolute", left: 0, top: "50%", width: 34, height: 1, background: "rgba(0,255,220,.85)" }} />
+        <div style={{ position: "absolute", top: 0, left: "50%", width: 1, height: 34, background: "rgba(0,255,220,.85)" }} />
+        <div style={{ position: "absolute", left: "50%", top: "50%", width: 5, height: 5, transform: "translate(-50%,-50%)", borderRadius: "50%", background: "#00ffdc", boxShadow: "0 0 8px #00ffdc" }} />
       </div>
 
-      {/* =================================================
-          TARGET HUD
-      ================================================== */}
+      <div style={{ position: "absolute", left: 18, top: 72, zIndex: 20, pointerEvents: "none", padding: "9px 12px", border: "1px solid rgba(0,255,220,.45)", borderRadius: 8, background: "rgba(0,8,13,.78)", color: "#bfffff", fontFamily: "Arial, sans-serif", backdropFilter: "blur(6px)" }}>
+        <div style={{ color: "#00ffdc", fontSize: 10, fontWeight: 900, letterSpacing: 1 }}>🏪 MINING STATION</div>
+        <div style={{ marginTop: 4, fontSize: 11, fontWeight: 800 }}>{stationDistanceLabel(stationPos, shipPosition)}</div>
+      </div>
 
-      {targetAsteroid &&
-        !targetAsteroid.mined && (
-          <div
-            style={{
-              position: "absolute",
-              top: "82px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: "min(330px, calc(100% - 30px))",
-              padding: "12px 14px",
-              zIndex: 25,
-              pointerEvents: "none",
-              border: "1px solid rgba(0,255,157,0.65)",
-              borderRadius: "8px",
-              background: "rgba(0,8,13,0.88)",
-              boxShadow:
-                "0 0 20px rgba(0,255,157,0.12)",
-              backdropFilter: "blur(7px)",
-              color: "#fff",
-              fontFamily:
-                "Arial, Helvetica, sans-serif",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "7px",
-                color: "#00ff9d",
-                fontSize: "10px",
-                fontWeight: "900",
-                letterSpacing: "1.5px",
-              }}
-            >
-              <span>🎯 TARGET LOCK</span>
-
-              <span
-                style={{
-                  color: "#7caaa0",
-                  letterSpacing: "0",
-                }}
-              >
-                #{targetAsteroid.id + 1}
-              </span>
-            </div>
-
-            <div
-              style={{
-                marginBottom: "8px",
-                fontSize: "17px",
-                fontWeight: "900",
-              }}
-            >
-              {getOreSymbol(targetOre)}{" "}
-              {getOreName(targetOre)}
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(4, 1fr)",
-                gap: "6px",
-              }}
-            >
-              <TargetStat
-                label="ORE"
-                value={Number(
-                  targetAsteroid.remainingOre ??
-                    targetAsteroid.ore ??
-                    0
-                ).toFixed(1)}
-              />
-
-              <TargetStat
-                label="VALUE"
-                value={`${getOrePrice(
-                  targetOre
-                )} CR`}
-              />
-
-              <TargetStat
-                label="DIST"
-                value={
-                  targetDistance !== null
-                    ? `${targetDistance.toFixed(1)}m`
-                    : "--"
-                }
-              />
-
-              <TargetStat
-                label="SIZE"
-                value={Number(
-                  targetAsteroid.size || 1.2
-                ).toFixed(1)}
-              />
-            </div>
-
-            <div
-              style={{
-                marginTop: "9px",
-                padding: "6px",
-                textAlign: "center",
-                borderRadius: "5px",
-                fontSize: "10px",
-                fontWeight: "900",
-                letterSpacing: "0.7px",
-                color: miningActive
-                  ? "#00ff9d"
-                  : targetDistance !== null &&
-                    targetDistance <= 8
-                  ? "#7dffcf"
-                  : "#ffcc66",
-                background:
-                  miningActive
-                    ? "rgba(0,255,157,0.08)"
-                    : targetDistance !== null &&
-                      targetDistance <= 8
-                    ? "rgba(0,255,157,0.06)"
-                    : "rgba(255,180,0,0.07)",
-                border:
-                  miningActive
-                    ? "1px solid rgba(0,255,157,0.22)"
-                    : targetDistance !== null &&
-                      targetDistance <= 8
-                    ? "1px solid rgba(0,255,157,0.18)"
-                    : "1px solid rgba(255,190,70,0.2)",
-              }}
-            >
-              {miningActive
-                ? "⛏️ MINING IN PROGRESS"
-                : targetDistance !== null &&
-                  targetDistance <= 8
-                ? "✓ IN MINING RANGE"
-                : "⚠️ MOVE CLOSER TO MINE"}
-            </div>
-
-            {miningActive && (
-              <div
-                style={{
-                  marginTop: "8px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "100%",
-                    height: "6px",
-                    overflow: "hidden",
-                    borderRadius: "4px",
-                    background:
-                      "rgba(255,255,255,0.1)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        targetAsteroid.remainingOre >
-                          0
-                          ? (miningProgress /
-                              targetAsteroid.remainingOre) *
-                            100
-                          : 0
-                      )}%`,
-                      height: "100%",
-                      borderRadius: "4px",
-                      background: "#00ff9d",
-                      boxShadow:
-                        "0 0 8px rgba(0,255,157,0.6)",
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+      {enemyTarget && !enemyTarget.destroyed ? (
+        <div style={{ position: "absolute", top: 72, right: 18, width: "min(320px, calc(100% - 30px))", padding: "11px 13px", zIndex: 20, pointerEvents: "none", border: "1px solid rgba(255,75,45,.65)", borderRadius: 8, background: "rgba(18,5,5,.88)", color: "#fff", fontFamily: "Arial, sans-serif", backdropFilter: "blur(6px)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#ff6545", fontSize: 10, fontWeight: 900, letterSpacing: 1.3 }}>
+            <span>⚔️ ENEMY TARGET</span><span>#{enemyTarget.id + 1}</span>
           </div>
-        )}
+          <div style={{ marginTop: 6, fontSize: 17, fontWeight: 900 }}>☠️ {enemyTarget.type}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 6, marginTop: 8 }}>
+            <TargetStat label="HP" value={`${Math.max(0, Number(enemyTarget.health || 0)).toFixed(0)} / ${enemyTarget.maxHealth}`} />
+            <TargetStat label="REWARD" value={`${enemyTarget.reward} CR`} />
+          </div>
+          <div style={{ marginTop: 7, height: 6, borderRadius: 4, overflow: "hidden", background: "rgba(255,255,255,.1)" }}>
+            <div style={{ width: `${Math.min(100, Math.max(0, (enemyTarget.health / enemyTarget.maxHealth) * 100))}%`, height: "100%", background: "#ff4b35" }} />
+          </div>
+          <div style={{ marginTop: 8, textAlign: "center", fontSize: 10, fontWeight: 900, color: "#ffb19f" }}>🎯 CLICK ENEMY TO TARGET • PRESS F OR USE FIRE BUTTON</div>
+        </div>
+      ) : null}
 
-      {!targetAsteroid && (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: "24px",
-            transform: "translateX(-50%)",
-            zIndex: 20,
-            pointerEvents: "none",
-            padding: "7px 11px",
-            borderRadius: "6px",
-            background:
-              "rgba(0,0,0,0.5)",
-            color: "rgba(210,240,235,0.75)",
-            fontSize: "10px",
-            whiteSpace: "nowrap",
-          }}
-        >
+      {target && !target.mined ? (
+        <div style={{ position: "absolute", top: 72, left: "50%", transform: "translateX(-50%)", width: "min(340px, calc(100% - 30px))", padding: "11px 13px", zIndex: 20, pointerEvents: "none", border: "1px solid rgba(0,255,157,.6)", borderRadius: 8, background: "rgba(0,8,13,.86)", color: "#fff", fontFamily: "Arial, sans-serif", backdropFilter: "blur(6px)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#00ff9d", fontSize: 10, fontWeight: 900, letterSpacing: 1.3 }}>
+            <span>🎯 TARGET LOCK</span><span>#{target.id + 1}</span>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 17, fontWeight: 900 }}>{oreSymbol(target.oreType)} {oreName(target.oreType)}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginTop: 8 }}>
+            <TargetStat label="ORE" value={`${Number(target.remainingOre || 0).toFixed(1)}`} />
+            <TargetStat label="VALUE" value={`${orePrice(target.oreType)} CR`} />
+            <TargetStat label="DIST" value={distance === null ? "--" : `${distance.toFixed(1)}m`} />
+          </div>
+          <div style={{ marginTop: 8, textAlign: "center", fontSize: 10, fontWeight: 900, color: miningActive ? "#00ff9d" : distance !== null && distance <= 8 ? "#7dffcf" : "#ffcc66" }}>
+            {miningActive ? "⛏️ MINING IN PROGRESS" : distance !== null && distance <= 8 ? "✓ IN MINING RANGE" : "⚠️ MOVE CLOSER TO MINE"}
+          </div>
+          {miningActive && <div style={{ marginTop: 7, height: 6, borderRadius: 4, overflow: "hidden", background: "rgba(255,255,255,.1)" }}><div style={{ width: `${progress}%`, height: "100%", background: "#00ff9d", transition: "width .08s linear" }} /></div>}
+        </div>
+      ) : (
+        <div style={{ position: "absolute", left: "50%", bottom: 20, transform: "translateX(-50%)", zIndex: 20, pointerEvents: "none", padding: "7px 11px", borderRadius: 6, background: "rgba(0,0,0,.5)", color: "rgba(210,240,235,.75)", fontSize: 10, whiteSpace: "nowrap" }}>
           🎯 Click an asteroid to target it
         </div>
       )}
 
-      {/* =================================================
-          OLD SCENE TITLE
-      ================================================== */}
-
-      <div className="space-scene-title">
-        🚀 SPACE SECTOR
-      </div>
-
+      <div className="space-scene-title">🚀 SPACE SECTOR</div>
       <div className="space-scene-controls">
-        <span>
-          ⌨️ W/A/S/D = Camera-relative movement
-        </span>
-
-        <span>
-          SPACE = UP
-        </span>
-
-        <span>
-          SHIFT = DOWN
-        </span>
-
-        <span>
-          🖱️ Drag = Rotate
-        </span>
-
-        <span>
-          🔍 Wheel = Zoom
-        </span>
-
-        <span>
-          ⛏️ Click = Mine
-        </span>
+        <span>⌨️ W/A/S/D = Move relative to camera</span>
+        <span>SPACE = UP</span>
+        <span>SHIFT = DOWN</span>
+        <span>🖱️ Drag = Rotate</span>
+        <span>🔍 Wheel = Zoom</span>
+        <span>⛏️ Click asteroid = Target / Mine</span>
+        <span>⚔️ Click enemy = Target • F = Fire</span>
       </div>
     </div>
   );
 }
-
-// =====================================================
-// TARGET HUD STAT
-// =====================================================
 
 function TargetStat({ label, value }) {
-  return (
-    <div
-      style={{
-        padding: "6px 4px",
-        borderRadius: "5px",
-        background: "rgba(255,255,255,0.035)",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          color: "#6f918a",
-          fontSize: "8px",
-          fontWeight: "700",
-          letterSpacing: "0.8px",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          marginTop: "2px",
-          color: "#eafff8",
-          fontSize: "11px",
-          fontWeight: "900",
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
+  return <div style={{ padding: "5px 3px", borderRadius: 5, background: "rgba(255,255,255,.035)", textAlign: "center" }}><div style={{ color: "#6f918a", fontSize: 8, fontWeight: 700 }}>{label}</div><div style={{ marginTop: 2, color: "#eafff8", fontSize: 11, fontWeight: 900 }}>{value}</div></div>;
 }
 
-// =====================================================
-// ORE DISPLAY HELPERS
-// =====================================================
-
-function getOreSymbol(type) {
-  const symbols = {
-    iron: "⚙️",
-    copper: "🟠",
-    titanium: "🔷",
-    gold: "🟡",
-    crystal: "💎",
-    uranium: "☢️",
-  };
-
-  return symbols[type] || "🪨";
+function oreSymbol(type) {
+  return ({ iron: "⚙️", copper: "🟠", titanium: "🔷", gold: "🟡", crystal: "💎", uranium: "☢️" })[type] || "🪨";
+}
+function oreName(type) {
+  return ({ iron: "IRON", copper: "COPPER", titanium: "TITANIUM", gold: "GOLD", crystal: "CRYSTAL", uranium: "URANIUM" })[type] || "UNKNOWN ORE";
+}
+function orePrice(type) {
+  return ({ iron: 10, copper: 18, titanium: 35, gold: 60, crystal: 100, uranium: 180 })[type] || 0;
 }
 
-function getOreName(type) {
-  const names = {
-    iron: "IRON",
-    copper: "COPPER",
-    titanium: "TITANIUM",
-    gold: "GOLD",
-    crystal: "CRYSTAL",
-    uranium: "URANIUM",
-  };
-
-  return names[type] || "UNKNOWN ORE";
-}
-
-function getOrePrice(type) {
-  const prices = {
-    iron: 10,
-    copper: 18,
-    titanium: 35,
-    gold: 60,
-    crystal: 100,
-    uranium: 180,
-  };
-
-  return prices[type] || 0;
+function stationDistanceLabel(stationPosition, shipPosition) {
+  if (!shipPosition) return "DISTANCE --";
+  const dx = (shipPosition.x || 0) - (stationPosition?.x || 0);
+  const dy = (shipPosition.y || 0) - (stationPosition?.y || 0);
+  const dz = (shipPosition.z || 0) - (stationPosition?.z || 0);
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  return distance <= 6 ? "✓ DOCKING RANGE" : `DISTANCE ${distance.toFixed(1)}m`;
 }
