@@ -228,6 +228,12 @@ export default function Game() {
   }, [game, selectedDestination, showMessage]);
 
   useEffect(() => {
+    const fuel = Number(gameState?.player?.ship?.fuel ?? 0);
+    const docked = Boolean(gameState?.station?.docked);
+    if (docked && fuel <= 0.001) setSidebarOpen(true);
+  }, [gameState?.player?.ship?.fuel, gameState?.station?.docked]);
+
+  useEffect(() => {
     if (!gameState?.navigation?.destinations) return;
     const destinations = gameState.navigation.destinations;
     const selected = destinations.find((destination) => destination.id === selectedDestination);
@@ -297,6 +303,7 @@ export default function Game() {
           miningProgress={miningProgress}
           shipPosition={player.ship.position}
           shipSpeed={player.ship.speed}
+          shipFuel={player.ship.fuel}
           stationPosition={station?.position || { x: 0, y: 0, z: -22 }}
           onAsteroidClick={handleMineAsteroid}
           onEnemyClick={handleEnemyClick}

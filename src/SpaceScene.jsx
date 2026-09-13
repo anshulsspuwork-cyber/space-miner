@@ -12,6 +12,7 @@ export default function SpaceScene({
   miningProgress = 0,
   shipPosition,
   shipSpeed,
+  shipFuel = 100,
   stationPosition,
   onAsteroidClick,
   onEnemyClick,
@@ -35,6 +36,7 @@ export default function SpaceScene({
   const miningRef = useRef(miningActive);
   const shipPositionRef = useRef(shipPosition || { x: 0, y: 0, z: 0 });
   const shipSpeedRef = useRef(shipSpeed || 8);
+  const shipFuelRef = useRef(Number(shipFuel ?? 100));
   const stationPositionRef = useRef(stationPosition || { x: 0, y: 0, z: -22 });
   const onAsteroidClickRef = useRef(onAsteroidClick);
   const onEnemyClickRef = useRef(onEnemyClick);
@@ -64,6 +66,7 @@ export default function SpaceScene({
   useEffect(() => { miningRef.current = miningActive; }, [miningActive]);
   useEffect(() => { shipPositionRef.current = shipPosition || { x: 0, y: 0, z: 0 }; }, [shipPosition]);
   useEffect(() => { shipSpeedRef.current = shipSpeed || 8; }, [shipSpeed]);
+  useEffect(() => { shipFuelRef.current = Number(shipFuel ?? 100); }, [shipFuel]);
   useEffect(() => { stationPositionRef.current = stationPosition || { x: 0, y: 0, z: -22 }; }, [stationPosition]);
   useEffect(() => { onAsteroidClickRef.current = onAsteroidClick; }, [onAsteroidClick]);
   useEffect(() => { onEnemyClickRef.current = onEnemyClick; }, [onEnemyClick]);
@@ -84,13 +87,20 @@ export default function SpaceScene({
 
     const camera = new BABYLON.ArcRotateCamera(
       "SpaceCamera",
-      -Math.PI / 2,
+      Math.PI,
       Math.PI / 2.8,
       28,
       BABYLON.Vector3.Zero(),
       scene
     );
-    camera.attachControl(canvas, true);
+    // Desktop: Babylon handles mouse camera controls.
+    // Mobile/tablet: do NOT attach Babylon's touch camera input because the
+    // game uses its own joystick/buttons and touch gestures must never rotate
+    // or fight the camera.
+    const isTouchDevice = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    if (!isTouchDevice) {
+      camera.attachControl(canvas, true);
+    }
     camera.lowerRadiusLimit = 10;
     camera.upperRadiusLimit = 65;
     camera.wheelPrecision = 35;
@@ -896,85 +906,111 @@ export default function SpaceScene({
     window.addEventListener("blur", clearKeys);
 
     // ---------------- MOBILE CONTROLS ----------------
+    // These controls use Pointer Events so Android/iOS browsers reliably
+    // receive touch input. The controls sit above the canvas and capture the
+    // pointer, while Babylon camera input is disabled on coarse-pointer devices.
     let joystickX = 0;
     let joystickY = 0;
-    let joystickTouchId = null;
+    let joystickPointerId = null;
     let mobileUp = false;
     let mobileDown = false;
     const root = canvas.parentElement;
     const mobileLayer = document.createElement("div");
-    mobileLayer.style.cssText = "position:absolute;left:0;right:0;bottom:0;top:0;z-index:30;pointer-events:none;";
+    mobileLayer.style.cssText = `position:absolute;inset:0;z-index:30;pointer-events:none;touch-action:none;display:${isTouchDevice ? "block" : "none"};`;
+
     const joystick = document.createElement("div");
-    joystick.style.cssText = "position:absolute;left:22px;bottom:22px;width:120px;height:120px;border:2px solid rgba(0,255,220,.45);border-radius:50%;background:rgba(0,15,25,.28);pointer-events:auto;touch-action:none;";
+    joystick.setAttribute("aria-label", "Movement joystick");
+    joystick.style.cssText = "position:absolute;left:max(18px, env(safe-area-inset-left));bottom:max(18px, env(safe-area-inset-bottom));width:126px;height:126px;border:2px solid rgba(0,255,220,.55);border-radius:50%;background:rgba(0,15,25,.42);pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;";
     const knob = document.createElement("div");
-    knob.style.cssText = "position:absolute;left:40px;top:40px;width:40px;height:40px;border-radius:50%;background:rgba(0,255,220,.55);box-shadow:0 0 18px rgba(0,255,220,.7);";
+    knob.style.cssText = "position:absolute;left:41px;top:41px;width:40px;height:40px;border-radius:50%;background:rgba(0,255,220,.62);box-shadow:0 0 18px rgba(0,255,220,.75);pointer-events:none;";
     joystick.appendChild(knob);
+
     const vertical = document.createElement("div");
-    vertical.style.cssText = "position:absolute;right:20px;bottom:25px;display:flex;flex-direction:column;gap:10px;pointer-events:auto;";
-    const makeButton = (text) => {
+    vertical.style.cssText = "position:absolute;right:max(18px, env(safe-area-inset-right));bottom:max(18px, env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;pointer-events:none;";
+    const makeButton = (text, label) => {
       const b = document.createElement("button");
+      b.type = "button";
       b.textContent = text;
-      b.style.cssText = "width:58px;height:52px;border:1px solid rgba(0,255,220,.5);border-radius:10px;background:rgba(0,12,22,.7);color:#bfffff;font-size:22px;font-weight:900;touch-action:none;";
+      b.setAttribute("aria-label", label);
+      b.style.cssText = "width:62px;height:56px;border:1px solid rgba(0,255,220,.58);border-radius:11px;background:rgba(0,12,22,.78);color:#bfffff;font-size:23px;font-weight:900;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;pointer-events:auto;";
       return b;
     };
-    const upButton = makeButton("▲");
-    const downButton = makeButton("▼");
-    vertical.appendChild(upButton); vertical.appendChild(downButton);
-    mobileLayer.appendChild(joystick); mobileLayer.appendChild(vertical);
+    const upButton = makeButton("▲", "Move up");
+    const downButton = makeButton("▼", "Move down");
+    vertical.appendChild(upButton);
+    vertical.appendChild(downButton);
+    mobileLayer.appendChild(joystick);
+    mobileLayer.appendChild(vertical);
     root.appendChild(mobileLayer);
 
-    const joystickUpdate = (touch) => {
+    const joystickUpdate = (clientX, clientY) => {
       const rect = joystick.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
-      let dx = (touch.clientX - cx) / (rect.width / 2);
-      let dy = (touch.clientY - cy) / (rect.height / 2);
+      let dx = (clientX - cx) / (rect.width / 2);
+      let dy = (clientY - cy) / (rect.height / 2);
       const len = Math.sqrt(dx * dx + dy * dy);
       if (len > 1) { dx /= len; dy /= len; }
       joystickX = dx;
       joystickY = dy;
       knob.style.transform = `translate(${dx * 35}px, ${dy * 35}px)`;
     };
+
     const joystickStart = (event) => {
-      const touch = event.changedTouches[0];
-      joystickTouchId = touch.identifier;
-      joystickUpdate(touch);
+      if (joystickPointerId !== null) return;
+      joystickPointerId = event.pointerId;
+      try { joystick.setPointerCapture(event.pointerId); } catch (_) {}
+      joystickUpdate(event.clientX, event.clientY);
       event.preventDefault();
+      event.stopPropagation();
     };
     const joystickMove = (event) => {
-      for (const touch of event.changedTouches) {
-        if (touch.identifier === joystickTouchId) {
-          joystickUpdate(touch);
-          event.preventDefault();
-          break;
-        }
-      }
+      if (event.pointerId !== joystickPointerId) return;
+      joystickUpdate(event.clientX, event.clientY);
+      event.preventDefault();
+      event.stopPropagation();
     };
     const joystickEnd = (event) => {
-      for (const touch of event.changedTouches) {
-        if (touch.identifier === joystickTouchId) {
-          joystickTouchId = null;
-          joystickX = 0; joystickY = 0;
-          knob.style.transform = "translate(0, 0)";
-          event.preventDefault();
-          break;
-        }
-      }
+      if (event.pointerId !== joystickPointerId) return;
+      joystickPointerId = null;
+      joystickX = 0;
+      joystickY = 0;
+      knob.style.transform = "translate(0, 0)";
+      event.preventDefault();
+      event.stopPropagation();
     };
-    joystick.addEventListener("touchstart", joystickStart, { passive: false });
-    joystick.addEventListener("touchmove", joystickMove, { passive: false });
-    joystick.addEventListener("touchend", joystickEnd, { passive: false });
-    joystick.addEventListener("touchcancel", joystickEnd, { passive: false });
+
+    joystick.addEventListener("pointerdown", joystickStart);
+    joystick.addEventListener("pointermove", joystickMove);
+    joystick.addEventListener("pointerup", joystickEnd);
+    joystick.addEventListener("pointercancel", joystickEnd);
+    joystick.addEventListener("lostpointercapture", () => {
+      joystickPointerId = null;
+      joystickX = 0;
+      joystickY = 0;
+      knob.style.transform = "translate(0, 0)";
+    });
+
     const bindHold = (button, setter) => {
-      const start = (e) => { setter(true); e.preventDefault(); };
-      const end = (e) => { setter(false); e.preventDefault(); };
-      button.addEventListener("touchstart", start, { passive: false });
-      button.addEventListener("touchend", end, { passive: false });
-      button.addEventListener("touchcancel", end, { passive: false });
+      const start = (event) => {
+        setter(true);
+        event.preventDefault();
+        event.stopPropagation();
+        try { button.setPointerCapture(event.pointerId); } catch (_) {}
+      };
+      const end = (event) => {
+        setter(false);
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      button.addEventListener("pointerdown", start);
+      button.addEventListener("pointerup", end);
+      button.addEventListener("pointercancel", end);
+      button.addEventListener("lostpointercapture", () => setter(false));
       return () => {
-        button.removeEventListener("touchstart", start);
-        button.removeEventListener("touchend", end);
-        button.removeEventListener("touchcancel", end);
+        button.removeEventListener("pointerdown", start);
+        button.removeEventListener("pointerup", end);
+        button.removeEventListener("pointercancel", end);
       };
     };
     const unbindUp = bindHold(upButton, (v) => { mobileUp = v; });
@@ -982,7 +1018,6 @@ export default function SpaceScene({
 
     let lastTime = performance.now();
     let lastReported = { x: ship.position.x, y: ship.position.y, z: ship.position.z };
-    let lastPropPosition = { ...lastReported };
 
     const updateMovement = () => {
       const now = performance.now();
@@ -991,10 +1026,16 @@ export default function SpaceScene({
 
       // If React changed the position externally (sector travel, load, etc.), sync the 3D ship.
       const prop = shipPositionRef.current || { x: 0, y: 0, z: 0 };
-      const propChanged = Math.abs((prop.x || 0) - lastPropPosition.x) > 0.2 || Math.abs((prop.y || 0) - lastPropPosition.y) > 0.2 || Math.abs((prop.z || 0) - lastPropPosition.z) > 0.2;
-      const recentlyReported = Math.abs((prop.x || 0) - lastReported.x) < 0.2 && Math.abs((prop.y || 0) - lastReported.y) < 0.2 && Math.abs((prop.z || 0) - lastReported.z) < 0.2;
-      if (propChanged && !recentlyReported) ship.position.set(prop.x || 0, prop.y || 0, prop.z || 0);
-      lastPropPosition = { x: prop.x || 0, y: prop.y || 0, z: prop.z || 0 };
+      // React state is reported frequently while the 3D ship moves. Do not
+      // snap the Babylon ship back to those small, slightly-lagged updates;
+      // doing so creates visible camera/ship jitter. Only accept a large
+      // external correction (sector jump, load, respawn, etc.).
+      const propDistance = Math.hypot(
+        (prop.x || 0) - ship.position.x,
+        (prop.y || 0) - ship.position.y,
+        (prop.z || 0) - ship.position.z
+      );
+      if (propDistance > 2.0) ship.position.set(prop.x || 0, prop.y || 0, prop.z || 0);
 
       let forward = (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0);
       let strafe = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
@@ -1006,36 +1047,42 @@ export default function SpaceScene({
       if (length > 1) { forward /= length; strafe /= length; verticalMove /= length; }
 
       if (Math.abs(forward) > 0.001 || Math.abs(strafe) > 0.001 || Math.abs(verticalMove) > 0.001) {
-        // Camera-relative horizontal basis.
-        let cameraForward = camera.target.subtract(camera.position);
-        cameraForward.y = 0;
-        if (cameraForward.lengthSquared() < 0.000001) cameraForward.set(0, 0, 1);
-        else cameraForward.normalize();
-        let cameraRight = BABYLON.Vector3.Cross(BABYLON.Axis.Y, cameraForward);
-        if (cameraRight.lengthSquared() < 0.000001) cameraRight.set(1, 0, 0);
-        else cameraRight.normalize();
-
-        const horizontal = cameraForward.scale(forward).add(cameraRight.scale(strafe));
+        // IMPORTANT: movement is completely independent of the camera.
+        // W/joystick-up = world +Z, S/down = world -Z, A/left = world -X,
+        // D/right = world +X. This prevents camera movement from feeding back
+        // into the controls and eliminates the oscillation/shaking loop.
+        const horizontal = new BABYLON.Vector3(strafe, 0, forward);
         if (horizontal.lengthSquared() > 0.000001) horizontal.normalize();
-        const speed = Number(shipSpeedRef.current) || 8;
-        ship.position.x += horizontal.x * speed * delta;
-        ship.position.z += horizontal.z * speed * delta;
-        ship.position.y += verticalMove * speed * delta;
 
-        ship.position.x = Math.max(-30, Math.min(30, ship.position.x));
-        ship.position.y = Math.max(-15, Math.min(15, ship.position.y));
-        ship.position.z = Math.max(-30, Math.min(30, ship.position.z));
+        // Never move the visual ship when the game engine has no fuel.
+        // Otherwise the render loop could move the Babylon ship while the
+        // engine rejects the position update, causing it to snap back and shake.
+        const fuelAvailable = Number(shipFuelRef.current) > 0.001;
+        if (fuelAvailable) {
+          const speed = Number(shipSpeedRef.current) || 8;
+          ship.position.x += horizontal.x * speed * delta;
+          ship.position.z += horizontal.z * speed * delta;
+          ship.position.y += verticalMove * speed * delta;
 
-        if (horizontal.lengthSquared() > 0.000001) {
-          // Ship nose is +Z, so atan2(x,z) points the nose in the travel direction.
-          ship.rotation.y = Math.atan2(horizontal.x, horizontal.z);
+          ship.position.x = Math.max(-30, Math.min(30, ship.position.x));
+          ship.position.y = Math.max(-15, Math.min(15, ship.position.y));
+          ship.position.z = Math.max(-30, Math.min(30, ship.position.z));
+
+          if (horizontal.lengthSquared() > 0.000001) {
+            // Ship nose is +Z, so the nose follows the actual travel direction.
+            ship.rotation.y = Math.atan2(horizontal.x, horizontal.z);
+          }
+          ship.rotation.x = -verticalMove * 0.18;
         }
-        ship.rotation.x = -verticalMove * 0.18;
       }
 
       const pulse = 0.8 + Math.sin(now * 0.02) * 0.2;
       engineGlow.scaling.set(pulse, pulse, pulse);
-      camera.target = ship.position.clone();
+      // Keep the chase camera locked to the ship every render frame.
+      // Smoothing the target itself caused a feedback loop: movement changed
+      // the target, the target changed the camera direction, and that changed
+      // the next movement vector, producing shaking/oscillation.
+      camera.target.copyFrom(ship.position);
 
       // Animate the station so it is easy to spot while flying.
       stationRing.rotation.z += 0.004;
@@ -1287,10 +1334,10 @@ export default function SpaceScene({
       window.removeEventListener("keyup", keyUp, true);
       window.removeEventListener("blur", clearKeys);
       window.removeEventListener("resize", resize);
-      joystick.removeEventListener("touchstart", joystickStart);
-      joystick.removeEventListener("touchmove", joystickMove);
-      joystick.removeEventListener("touchend", joystickEnd);
-      joystick.removeEventListener("touchcancel", joystickEnd);
+      joystick.removeEventListener("pointerdown", joystickStart);
+      joystick.removeEventListener("pointermove", joystickMove);
+      joystick.removeEventListener("pointerup", joystickEnd);
+      joystick.removeEventListener("pointercancel", joystickEnd);
       unbindUp();
       unbindDown();
       mobileLayer.remove();

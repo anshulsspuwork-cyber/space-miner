@@ -917,3 +917,74 @@ button { font: inherit; }
   .jump-route { grid-template-columns: 1fr auto 1fr; }
   .jump-title { letter-spacing: 2px; }
 }
+
+
+/* ==================================================
+   MOBILE LANDSCAPE MODE
+   ================================================== */
+@media (max-width: 900px) and (orientation: landscape) {
+  html, body, #root {
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .space-game {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .space-top-bar {
+    height: 46px;
+    padding: 0 max(9px, env(safe-area-inset-left)) 0 10px;
+    gap: 8px;
+  }
+
+  .game-logo { font-size: 13px; letter-spacing: 1px; }
+  .top-bar-info { gap: 5px; }
+  .top-stat { padding: 4px 6px !important; font-size: 8px !important; }
+
+  .game-sidebar {
+    top: 50px !important;
+    bottom: 8px !important;
+    width: min(340px, 48vw) !important;
+    max-height: calc(100dvh - 58px);
+    overflow-y: auto;
+  }
+
+  .space-event-alert {
+    top: 54px;
+    width: min(360px, 55vw);
+    padding: 10px;
+  }
+
+  .space-world .space-scene canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .space-jump-overlay .jump-title {
+    font-size: clamp(28px, 7vw, 54px);
+  }
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  .space-game::before {
+    content: "ROTATE PHONE HORIZONTALLY";
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: #02040b;
+    color: #bfffff;
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-align: center;
+  }
+}
