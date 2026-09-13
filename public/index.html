@@ -5,28 +5,23 @@
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="SPACE MINER - Explore, mine asteroids, fight pirates, upgrade your ship, and build your fortune across the galaxy."
-    />
-
-    <!-- Google AdSense -->
-    <script
-      async
-      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2764048376351624"
-      crossorigin="anonymous"
-    ></script>
-
+    <meta name="description" content="SPACE MINER - Explore, mine asteroids, fight pirates, upgrade your ship, and build your fortune across the galaxy." />
+    <!-- Google AdSense: load only on the deployed site, not localhost development. -->
+    <script>
+      if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+        var adsenseScript = document.createElement("script");
+        adsenseScript.async = true;
+        adsenseScript.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2764048376351624";
+        adsenseScript.crossOrigin = "anonymous";
+        document.head.appendChild(adsenseScript);
+      }
+    </script>
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-
     <title>SPACE MINER</title>
   </head>
-
   <body>
     <noscript>You need to enable JavaScript to run SPACE MINER.</noscript>
-
     <div id="root"></div>
   </body>
 </html>

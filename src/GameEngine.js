@@ -160,6 +160,19 @@ export class GameEngine {
     };
 
     // ==================================================
+    // JUMP DRIVE / TRAVEL
+    // ==================================================
+
+    this.jumpDrive = {
+      fuelCost: 15,
+      cooldown: 3,
+      lastJumpAt: 0,
+      jumps: 0,
+    };
+
+    this.events = { active: null, cooldownUntil: Date.now() + 5000, completed: 0 };
+
+    // ==================================================
     // COMBAT
     // ==================================================
 
@@ -1368,13 +1381,8 @@ export class GameEngine {
   // TRAVEL
   // ====================================================
 
-  travelToSector(
-    sectorId
-  ) {
-    if (
-      sectorId < 0 ||
-      sectorId >= this.universe.sectors.length
-    ) {
+  travelToSector(sectorId) {
+    if (sectorId < 0 || sectorId >= this.universe.sectors.length) {
       return false;
     }
 
@@ -1383,19 +1391,56 @@ export class GameEngine {
     }
 
     this.stopMining();
+    this.universe.currentSector = sectorId;
 
-    this.universe
-      .currentSector =
-      sectorId;
-
-    // Start ship in center
-    this.player.ship.position = {
-      x: 0,
-      y: 0,
-      z: 0,
-    };
+    // Start the ship at the sector entry point.
+    this.player.ship.position = { x: 0, y: 0, z: 0 };
+    this.events.active = null;
+    this.events.cooldownUntil = Date.now() + 5000;
+    this.combat.projectiles = [];
 
     return true;
+  }
+
+  // ====================================================
+  // SPACE JUMP
+  // ====================================================
+
+  jumpToSector(sectorId) {
+    if (sectorId < 0 || sectorId >= this.universe.sectors.length) {
+      return { success: false, message: "Invalid destination." };
+    }
+
+    if (sectorId === this.universe.currentSector) {
+      return { success: false, message: "You are already in this sector." };
+    }
+
+    if (!this.isSectorUnlocked(sectorId)) {
+      return { success: false, message: `Sector ${sectorId + 1} is locked.` };
+    }
+
+    const now = Date.now();
+    const cooldownRemaining = this.jumpDrive.cooldown - ((now - this.jumpDrive.lastJumpAt) / 1000);
+    if (cooldownRemaining > 0) {
+      return { success: false, message: `Jump drive charging (${cooldownRemaining.toFixed(1)}s).` };
+    }
+
+    const fuel = Number(this.player.ship.fuel || 0);
+    if (fuel < this.jumpDrive.fuelCost) {
+      return { success: false, message: `Not enough fuel. Jump requires ${this.jumpDrive.fuelCost} fuel.` };
+    }
+
+    this.player.ship.fuel = Math.max(0, fuel - this.jumpDrive.fuelCost);
+    this.jumpDrive.lastJumpAt = now;
+    this.jumpDrive.jumps = Number(this.jumpDrive.jumps || 0) + 1;
+
+    this.travelToSector(sectorId);
+
+    return {
+      success: true,
+      sectorId,
+      message: `Space jump complete. Welcome to Sector ${sectorId + 1}.`,
+    };
   }
 
   // ====================================================
@@ -1546,6 +1591,14 @@ export class GameEngine {
       this.player.ship.speed =
         8;
     }
+
+    if (!this.jumpDrive) {
+      this.jumpDrive = { fuelCost: 15, cooldown: 3, lastJumpAt: 0, jumps: 0 };
+    }
+    if (typeof this.jumpDrive.fuelCost !== "number") this.jumpDrive.fuelCost = 15;
+    if (typeof this.jumpDrive.cooldown !== "number") this.jumpDrive.cooldown = 3;
+    if (typeof this.jumpDrive.lastJumpAt !== "number") this.jumpDrive.lastJumpAt = 0;
+    if (typeof this.jumpDrive.jumps !== "number") this.jumpDrive.jumps = 0;
 
     if (!this.combat) {
       this.combat = {
@@ -1713,6 +1766,73 @@ export class GameEngine {
   }
 
   // ====================================================
+  // SPACE EVENTS / EXPLORATION
+  // ====================================================
+
+  generateSpaceEventPosition() {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const candidate = { x: this.randomBetween(-23, 23), y: this.randomBetween(-9, 9), z: this.randomBetween(-23, 23) };
+      const p = this.player.ship.position || { x: 0, y: 0, z: 0 };
+      const dx = candidate.x - p.x;
+      const dy = candidate.y - p.y;
+      const dz = candidate.z - p.z;
+      if (Math.sqrt(dx * dx + dy * dy + dz * dz) >= 10) return candidate;
+    }
+    return { x: 18, y: 0, z: 18 };
+  }
+
+  spawnSpaceEvent() {
+    const sectorLevel = this.universe.currentSector + 1;
+    const roll = Math.random();
+    let type = "derelict";
+    let title = "Derelict Cargo Pod";
+    let description = "An abandoned cargo pod is drifting through the asteroid field.";
+    let rewardCredits = 180 + sectorLevel * 70;
+    let rewardFuel = 8;
+    let rewardReputation = 2;
+
+    if (roll >= 0.34 && roll < 0.67) {
+      type = "distress"; title = "Distress Beacon"; description = "A weak distress signal is broadcasting nearby. Investigate it.";
+      rewardCredits = 260 + sectorLevel * 90; rewardFuel = 12; rewardReputation = 4;
+    } else if (roll >= 0.67) {
+      type = "cache"; title = "Rare Supply Cache"; description = "A hidden frontier cache contains valuable supplies.";
+      rewardCredits = 350 + sectorLevel * 120; rewardFuel = 15; rewardReputation = 5;
+    }
+
+    this.events.active = { id: `event-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, title, description, position: this.generateSpaceEventPosition(), rewardCredits, rewardFuel, rewardReputation, sector: this.universe.currentSector, spawnedAt: Date.now() };
+  }
+
+  updateSpaceEvents() {
+    if (!this.events) this.events = { active: null, cooldownUntil: Date.now() + 5000, completed: 0 };
+    const now = Date.now();
+    if (!this.events.active && now >= Number(this.events.cooldownUntil || 0)) this.spawnSpaceEvent();
+  }
+
+  getSpaceEventDistance() {
+    const event = this.events?.active;
+    if (!event) return null;
+    const p = this.player.ship.position || { x: 0, y: 0, z: 0 };
+    const dx = p.x - event.position.x; const dy = p.y - event.position.y; const dz = p.z - event.position.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  collectSpaceEvent() {
+    const event = this.events?.active;
+    if (!event) return { success: false, message: "No space event is active." };
+    const distance = this.getSpaceEventDistance();
+    if (distance === null || distance > 6) return { success: false, message: `Fly closer to the ${event.title.toLowerCase()} (${distance?.toFixed(1) || "--"}m).` };
+    this.player.credits += Number(event.rewardCredits || 0);
+    this.player.ship.fuel = Math.min(Number(this.player.ship.maxFuel || 100), Number(this.player.ship.fuel || 0) + Number(event.rewardFuel || 0));
+    this.player.progress.reputation = Number(this.player.progress.reputation || 0) + Number(event.rewardReputation || 0);
+    this.player.progress.totalCreditsEarned += Number(event.rewardCredits || 0);
+    this.events.completed = Number(this.events.completed || 0) + 1;
+    this.events.active = null;
+    this.events.cooldownUntil = Date.now() + 15000;
+    this.checkMissions();
+    return { success: true, message: `${event.title} recovered! +${event.rewardCredits} CR, +${event.rewardFuel} fuel, +${event.rewardReputation} reputation.` };
+  }
+
+  // ====================================================
   // SAVE GAME
   // ====================================================
 
@@ -1731,6 +1851,12 @@ export class GameEngine {
 
       economy:
         this.economy,
+
+      jumpDrive:
+        this.jumpDrive,
+
+      events:
+        this.events,
     };
 
     localStorage.setItem(
@@ -1787,10 +1913,13 @@ export class GameEngine {
       }
 
       if (data.economy) {
-        this.economy = {
-          ...this.economy,
-          ...data.economy,
-        };
+        this.economy = { ...this.economy, ...data.economy };
+      }
+      if (data.jumpDrive) {
+        this.jumpDrive = { ...this.jumpDrive, ...data.jumpDrive };
+      }
+      if (data.events) {
+        this.events = { ...this.events, ...data.events };
       }
 
       this.normalizePlayer();
@@ -1877,6 +2006,26 @@ export class GameEngine {
         fuelPrice: this.economy?.fuelPrice ?? 3,
         repairHullPrice: this.economy?.repairHullPrice ?? 5,
         repairShieldPrice: this.economy?.repairShieldPrice ?? 2,
+      },
+
+      navigation: {
+        fuelCost: this.jumpDrive?.fuelCost ?? 15,
+        cooldown: this.jumpDrive?.cooldown ?? 3,
+        lastJumpAt: this.jumpDrive?.lastJumpAt ?? 0,
+        jumps: this.jumpDrive?.jumps ?? 0,
+        destinations: this.universe.sectors.map((sector, index) => ({
+          id: index,
+          name: sector.name,
+          unlocked: this.isSectorUnlocked(index),
+          current: index === this.universe.currentSector,
+          requiredLevel: this.getSectorUnlockLevel(index),
+        })),
+      },
+
+      spaceEvent: {
+        active: this.events?.active || null,
+        completed: Number(this.events?.completed || 0),
+        distance: this.getSpaceEventDistance(),
       },
 
       reputation: this.getReputationRank(),

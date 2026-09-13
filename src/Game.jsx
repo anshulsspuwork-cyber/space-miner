@@ -10,6 +10,8 @@ export default function Game() {
   const [selectedEnemy, setSelectedEnemy] = useState(null);
   const [message, setMessage] = useState("");
   const [stationContact, setStationContact] = useState(null);
+  const [selectedDestination, setSelectedDestination] = useState(1);
+  const [jumping, setJumping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const animationFrameRef = useRef(null);
   const lastTimeRef = useRef(Date.now());
@@ -51,6 +53,7 @@ export default function Game() {
       lastTimeRef.current = now;
       game.updateMining(delta);
       game.updateCombat(delta);
+      game.updateSpaceEvents(delta);
       setGameState(game.getGameState());
       animationFrameRef.current = requestAnimationFrame(loop);
     };
@@ -112,6 +115,14 @@ export default function Game() {
     }
     handleFireWeapon(selectedEnemy);
   }, [selectedEnemy, handleFireWeapon, showMessage]);
+
+  const handleCollectSpaceEvent = useCallback(() => {
+    if (!game) return;
+    const result = game.collectSpaceEvent();
+    showMessage(result.success ? `🛰️ ${result.message}` : `⚠️ ${result.message}`, 3200);
+    if (result.success) game.saveGame();
+    setGameState(game.getGameState());
+  }, [game, showMessage]);
 
   const handleSellOre = () => {
     if (!game || !gameState) return;
@@ -195,24 +206,36 @@ export default function Game() {
     window.location.reload();
   }, [game]);
 
-  const handleTravel = (sectorId) => {
+  const handleSpaceJump = useCallback(() => {
     if (!game) return;
-    const target = gameState?.sectorInfo?.[sectorId];
-    if (target && !target.unlocked) {
-      showMessage(`🔒 Sector ${sectorId + 1} requires Ship Level ${target.requiredLevel}.`);
+
+    const result = game.jumpToSector(Number(selectedDestination));
+    if (!result.success) {
+      showMessage(`⚠️ ${result.message}`, 1800);
+      setGameState(game.getGameState());
       return;
     }
-    const success = game.travelToSector(sectorId);
-    if (!success) {
-      showMessage(`⚠️ Sector ${sectorId + 1} is locked.`);
-      return;
-    }
-    game.saveGame();
+
+    setJumping(true);
     setSelectedAsteroid(null);
     setSelectedEnemy(null);
-    showMessage(`🚀 Travelling to Sector ${sectorId + 1}`);
+    setStationContact(null);
     setGameState(game.getGameState());
-  };
+    showMessage(`🌀 ${result.message}`, 2200);
+
+    window.setTimeout(() => setJumping(false), 900);
+    game.saveGame();
+  }, [game, selectedDestination, showMessage]);
+
+  useEffect(() => {
+    if (!gameState?.navigation?.destinations) return;
+    const destinations = gameState.navigation.destinations;
+    const selected = destinations.find((destination) => destination.id === selectedDestination);
+    if (!selected || !selected.unlocked || selected.current) {
+      const fallback = destinations.find((destination) => destination.unlocked && !destination.current);
+      if (fallback) setSelectedDestination(fallback.id);
+    }
+  }, [gameState, selectedDestination]);
 
   if (!gameState) {
     return <div className="loading">🚀 Loading SPACE MINER...</div>;
@@ -230,11 +253,12 @@ export default function Game() {
     station,
     enemies,
     combat,
-    sectorInfo,
+    navigation = { fuelCost: 15, cooldown: 3, lastJumpAt: 0, jumps: 0, destinations: [] },
     market,
     economy = { fuelPrice: 3, repairHullPrice: 5, repairShieldPrice: 2 },
     reputation = { name: "Newcomer", next: 100 },
     stationContacts = [],
+    spaceEvent = { active: null, completed: 0, distance: null },
   } = gameState;
 
   const currentAsteroid = miningTarget !== null && miningTarget !== undefined
@@ -266,6 +290,7 @@ export default function Game() {
           asteroids={currentSector?.asteroids || []}
           enemies={enemies || currentSector?.enemies || []}
           enemyProjectiles={combat?.projectiles || []}
+          spaceEvent={spaceEvent}
           selectedAsteroid={selectedAsteroid}
           selectedEnemy={selectedEnemy}
           miningActive={miningActive}
@@ -305,6 +330,19 @@ export default function Game() {
 
       {message && <div className="game-message">{message}</div>}
 
+      {jumping && (
+        <div className="space-jump-overlay" aria-live="polite">
+          <div className="jump-streaks">
+            {Array.from({ length: 18 }).map((_, index) => <span key={index} style={{ "--i": index }} />)}
+          </div>
+          <div className="jump-core">
+            <div className="jump-kicker">JUMP DRIVE</div>
+            <div className="jump-title">SPACE JUMP</div>
+            <div className="jump-subtitle">ENTERING SECTOR {universe.currentSector + 1}</div>
+          </div>
+        </div>
+      )}
+
       {miningActive && currentAsteroid && (
         <div className="floating-mining">
           <div className="floating-mining-title">
@@ -312,6 +350,18 @@ export default function Game() {
           </div>
           <div className="floating-progress"><div style={{ width: `${miningPercentage}%` }} /></div>
           <div className="floating-mining-meta">{miningPercentage.toFixed(0)}% • {player.ship.miningSpeed.toFixed(1)} ore/sec</div>
+        </div>
+      )}
+
+      {spaceEvent?.active && spaceEvent.distance !== null && spaceEvent.distance <= 6 && (
+        <div className="space-event-alert">
+          <div className="space-event-kicker">🛰️ FRONTIER EVENT</div>
+          <div className="space-event-title">{spaceEvent.active.title}</div>
+          <div className="space-event-description">{spaceEvent.active.description}</div>
+          <div className="space-event-distance">{spaceEvent.distance !== null ? `${spaceEvent.distance.toFixed(1)}m away` : "Signal detected"}</div>
+          <button className="btn btn-event" onClick={handleCollectSpaceEvent} disabled={spaceEvent.distance === null || spaceEvent.distance > 6}>
+            {spaceEvent.distance !== null && spaceEvent.distance <= 6 ? "🛰️ INVESTIGATE" : "FLY TO SIGNAL"}
+          </button>
         </div>
       )}
 
@@ -413,6 +463,11 @@ export default function Game() {
           <div className="big-credits">{player.credits.toFixed(0)} <small>CR</small></div>
         </section>
 
+        <section className="panel event-panel">
+          <div className="panel-title-row"><h3>🛰️ EXPLORATION</h3><span className="status-good">{spaceEvent?.completed || 0} FOUND</span></div>
+          <p className="station-hint">Random frontier events appear while you explore. Investigate them for extra credits, fuel and reputation.</p>
+        </section>
+
         <section className="panel">
           <h3>📦 CARGO</h3>
           {inventoryEntries.length === 0 ? (
@@ -442,26 +497,31 @@ export default function Game() {
           </button>
         </section>
 
-        <section className="panel">
-          <h3>🌌 SECTORS</h3>
-          <p className="station-hint">Upgrade your ship to unlock deeper sectors. Higher sectors contain rarer ores and stronger enemies.</p>
-          <div className="sector-list">
-            {universe.sectors.map((sector, index) => {
-            const info = sectorInfo?.[index] || { unlocked: index === 0, requiredLevel: index + 1, asteroidCount: 0, danger: index + 1 };
-            const unlocked = Boolean(info.unlocked);
-            return (
-              <button
-                key={sector.id}
-                className={`sector-btn ${universe.currentSector === index ? "active" : ""} ${!unlocked ? "locked" : ""}`}
-                onClick={() => handleTravel(index)}
-                disabled={!unlocked}
-              >
-                <span>{unlocked ? "🌌" : "🔒"} SECTOR {index + 1}</span>
-                <small>{unlocked ? `${info.asteroidCount} asteroids • Danger ${info.danger}/6` : `Requires Ship Level ${info.requiredLevel}`}</small>
-              </button>
-            );
-          })}
+        <section className="panel navigation-panel">
+          <div className="panel-title-row">
+            <h3>🌀 JUMP DRIVE</h3>
+            <span className="status-good">READY</span>
           </div>
+          <p className="station-hint">Jump directly between unlocked sectors from anywhere in space. No need to return to the sector menu.</p>
+          <div className="jump-route">
+            <div className="jump-current">CURRENT <strong>SECTOR {universe.currentSector + 1}</strong></div>
+            <div className="jump-arrow">→</div>
+            <select value={selectedDestination} onChange={(event) => setSelectedDestination(Number(event.target.value))} className="jump-select">
+              {navigation.destinations.map((destination) => (
+                <option key={destination.id} value={destination.id} disabled={!destination.unlocked || destination.current}>
+                  {destination.current ? `Sector ${destination.id + 1} (CURRENT)` : destination.unlocked ? `Sector ${destination.id + 1}` : `Sector ${destination.id + 1} (LOCKED)`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="btn btn-jump"
+            onClick={handleSpaceJump}
+            disabled={Number(selectedDestination) === universe.currentSector || fuel < Number(navigation.fuelCost || 15) || jumping}
+          >
+            {jumping ? "🌀 JUMPING..." : fuel < Number(navigation.fuelCost || 15) ? `⛽ NEED ${navigation.fuelCost} FUEL` : "🚀 INITIATE SPACE JUMP"}
+          </button>
+          <div className="jump-meta">Cost: {navigation.fuelCost} fuel • Jumps completed: {navigation.jumps}</div>
         </section>
 
         <section className="panel">

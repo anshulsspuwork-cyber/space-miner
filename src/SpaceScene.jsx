@@ -5,6 +5,7 @@ export default function SpaceScene({
   asteroids,
   enemies = [],
   enemyProjectiles = [],
+  spaceEvent = { active: null },
   selectedAsteroid,
   selectedEnemy = null,
   miningActive,
@@ -21,15 +22,20 @@ export default function SpaceScene({
   const asteroidsRef = useRef(asteroids || []);
   const enemiesRef = useRef(enemies || []);
   const enemyProjectilesRef = useRef(enemyProjectiles || []);
+  const spaceEventRef = useRef(spaceEvent || { active: null });
 
   useEffect(() => {
     enemyProjectilesRef.current = enemyProjectiles || [];
   }, [enemyProjectiles]);
+  useEffect(() => {
+    spaceEventRef.current = spaceEvent || { active: null };
+  }, [spaceEvent]);
   const selectedRef = useRef(selectedAsteroid);
   const selectedEnemyRef = useRef(selectedEnemy);
   const miningRef = useRef(miningActive);
   const shipPositionRef = useRef(shipPosition || { x: 0, y: 0, z: 0 });
   const shipSpeedRef = useRef(shipSpeed || 8);
+  const stationPositionRef = useRef(stationPosition || { x: 0, y: 0, z: -22 });
   const onAsteroidClickRef = useRef(onAsteroidClick);
   const onEnemyClickRef = useRef(onEnemyClick);
   const onFireWeaponRef = useRef(onFireWeapon);
@@ -58,6 +64,7 @@ export default function SpaceScene({
   useEffect(() => { miningRef.current = miningActive; }, [miningActive]);
   useEffect(() => { shipPositionRef.current = shipPosition || { x: 0, y: 0, z: 0 }; }, [shipPosition]);
   useEffect(() => { shipSpeedRef.current = shipSpeed || 8; }, [shipSpeed]);
+  useEffect(() => { stationPositionRef.current = stationPosition || { x: 0, y: 0, z: -22 }; }, [stationPosition]);
   useEffect(() => { onAsteroidClickRef.current = onAsteroidClick; }, [onAsteroidClick]);
   useEffect(() => { onEnemyClickRef.current = onEnemyClick; }, [onEnemyClick]);
   useEffect(() => { onFireWeaponRef.current = onFireWeapon; }, [onFireWeapon]);
@@ -211,6 +218,7 @@ export default function SpaceScene({
     let enemyTargetRing = null;
     const enemyMeshes = new Map();
     const enemyProjectileMeshes = new Map();
+  const spaceEventMeshes = new Map();
     const enemyExplosionBursts = [];
     let targetRing = null;
     let lastBurstIds = new Set();
@@ -604,7 +612,8 @@ export default function SpaceScene({
     };
 
     // ---------------- SPACE STATION ----------------
-    const stationPos = stationPosition || { x: 0, y: 0, z: -22 };
+    const stationPos = stationPositionRef.current || { x: 0, y: 0, z: -22 };
+    const adBillboards = [];
     const station = new BABYLON.TransformNode("MiningStation", scene);
     station.position = new BABYLON.Vector3(stationPos.x || 0, stationPos.y || 0, stationPos.z || -22);
 
@@ -668,6 +677,169 @@ export default function SpaceScene({
     stationLabelMat.disableLighting = true;
     stationLabelMat.backFaceCulling = false;
     stationLabel.material = stationLabelMat;
+
+    // ---------------- 3D SPACE AD BILLBOARDS ----------------
+    // Large, readable in-universe advertising structures around the station.
+    // These are placeholder surfaces; real Google ads are not rendered into
+    // the BabylonJS canvas.
+    const createAdBillboard = (name, offset, title, subtitle, accent) => {
+      const root = new BABYLON.TransformNode(name, scene);
+      root.parent = station;
+      root.position = new BABYLON.Vector3(offset.x, offset.y, offset.z);
+      // Keep the whole advertising structure facing the player so the ad face
+      // never turns edge-on when the player approaches from another direction.
+      root.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+      root.rotation.y = 0;
+
+      const color = new BABYLON.Color3(accent.r, accent.g, accent.b);
+      const dimColor = new BABYLON.Color3(accent.r * 0.16, accent.g * 0.16, accent.b * 0.16);
+
+      // Heavy outer frame.
+      const frameMat = new BABYLON.StandardMaterial(`${name}FrameMat`, scene);
+      frameMat.diffuseColor = new BABYLON.Color3(0.015, 0.025, 0.04);
+      frameMat.emissiveColor = dimColor;
+      frameMat.disableLighting = true;
+
+      const frame = BABYLON.MeshBuilder.CreateBox(`${name}Frame`, {
+        width: 9.2,
+        height: 4.8,
+        depth: 0.28,
+      }, scene);
+      frame.parent = root;
+      frame.material = frameMat;
+
+      // Four illuminated rails make the billboard read clearly from a distance.
+      const railMat = new BABYLON.StandardMaterial(`${name}RailMat`, scene);
+      railMat.emissiveColor = color;
+      railMat.disableLighting = true;
+
+      const rails = [
+        { x: 0, y: 2.42, w: 8.9, h: 0.11 },
+        { x: 0, y: -2.42, w: 8.9, h: 0.11 },
+        { x: -4.55, y: 0, w: 0.11, h: 4.7 },
+        { x: 4.55, y: 0, w: 0.11, h: 4.7 },
+      ];
+      rails.forEach((rail, index) => {
+        const mesh = BABYLON.MeshBuilder.CreateBox(`${name}Rail${index}`, {
+          width: rail.w,
+          height: rail.h,
+          depth: 0.34,
+        }, scene);
+        mesh.parent = root;
+        mesh.position.x = rail.x;
+        mesh.position.y = rail.y;
+        mesh.material = railMat;
+      });
+
+      // Large readable advertising face.
+      const panel = BABYLON.MeshBuilder.CreatePlane(`${name}Panel`, {
+        width: 8.65,
+        height: 4.25,
+      }, scene);
+      panel.parent = root;
+      panel.position.z = -0.18;
+      panel.material = null;
+
+      const texture = new BABYLON.DynamicTexture(`${name}Texture`, {
+        width: 1200,
+        height: 590,
+      }, scene, true);
+      texture.hasAlpha = false;
+      const ctx = texture.getContext();
+      ctx.fillStyle = '#030912';
+      ctx.fillRect(0, 0, 1200, 590);
+
+      const accentCss = `rgb(${Math.round(accent.r * 255)}, ${Math.round(accent.g * 255)}, ${Math.round(accent.b * 255)})`;
+      const softCss = `rgba(${Math.round(accent.r * 255)}, ${Math.round(accent.g * 255)}, ${Math.round(accent.b * 255)}, 0.18)`;
+
+      ctx.fillStyle = softCss;
+      ctx.fillRect(38, 38, 1124, 514);
+      ctx.strokeStyle = accentCss;
+      ctx.lineWidth = 10;
+      ctx.strokeRect(24, 24, 1152, 542);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#a7c0c5';
+      ctx.font = 'bold 30px Arial';
+      ctx.fillText('SPACE MINER • COMMERCIAL NETWORK', 600, 82);
+
+      ctx.fillStyle = accentCss;
+      ctx.font = 'bold 86px Arial';
+      ctx.fillText(title, 600, 225);
+
+      ctx.fillStyle = '#f1ffff';
+      ctx.font = 'bold 38px Arial';
+      ctx.fillText(subtitle, 600, 300);
+
+      ctx.fillStyle = '#7f9ba0';
+      ctx.font = '26px Arial';
+      ctx.fillText('YOUR BRAND COULD APPEAR HERE', 600, 410);
+
+      ctx.fillStyle = accentCss;
+      ctx.font = 'bold 25px Arial';
+      ctx.fillText('ADVERTISEMENT', 600, 500);
+      texture.update();
+
+      const panelMat = new BABYLON.StandardMaterial(`${name}PanelMat`, scene);
+      panelMat.diffuseTexture = texture;
+      panelMat.emissiveTexture = texture;
+      panelMat.emissiveColor = new BABYLON.Color3(0.8, 0.8, 0.8);
+      panelMat.disableLighting = true;
+      panelMat.backFaceCulling = false;
+      panel.material = panelMat;
+
+      // Support mast and feet make it look like a physical station structure.
+      const supportMat = new BABYLON.StandardMaterial(`${name}SupportMat`, scene);
+      supportMat.diffuseColor = new BABYLON.Color3(0.035, 0.05, 0.07);
+        supportMat.emissiveColor = dimColor;
+      supportMat.disableLighting = true;
+
+      const mast = BABYLON.MeshBuilder.CreateBox(`${name}Mast`, {
+        width: 0.28,
+        height: 2.8,
+        depth: 0.28,
+      }, scene);
+      mast.parent = root;
+      mast.position.y = -3.55;
+      mast.material = supportMat;
+
+      const foot = BABYLON.MeshBuilder.CreateBox(`${name}Foot`, {
+        width: 2.1,
+        height: 0.24,
+        depth: 0.9,
+      }, scene);
+      foot.parent = root;
+      foot.position.y = -4.9;
+      foot.material = supportMat;
+
+      const beaconMat = new BABYLON.StandardMaterial(`${name}BeaconMat`, scene);
+      beaconMat.emissiveColor = color;
+      beaconMat.disableLighting = true;
+      const beacon = BABYLON.MeshBuilder.CreateSphere(`${name}Beacon`, {
+        diameter: 0.32,
+      }, scene);
+      beacon.parent = root;
+      beacon.position.set(0, 2.75, -0.08);
+      beacon.material = beaconMat;
+
+      adBillboards.push({ root, panel, beacon });
+      return root;
+    };
+
+    createAdBillboard(
+      'StationAdNorth',
+      { x: -10.5, y: 4.2, z: 0 },
+      'NOVA FUEL',
+      'POWER YOUR NEXT VOYAGE',
+      { r: 0.1, g: 0.85, b: 1 }
+    );
+    createAdBillboard(
+      'StationAdSouth',
+      { x: 10.5, y: 4.0, z: 0 },
+      'GALACTIC GEAR',
+      'SHIP PARTS • UPGRADES • REPAIRS',
+      { r: 0.2, g: 1, b: 0.55 }
+    );
 
     const dockingRing = BABYLON.MeshBuilder.CreateTorus("DockingRangeRing", {
       diameter: 12,
@@ -868,6 +1040,10 @@ export default function SpaceScene({
       // Animate the station so it is easy to spot while flying.
       stationRing.rotation.z += 0.004;
       dockingRing.rotation.z -= 0.002;
+      adBillboards.forEach((billboard, index) => {
+        billboard.root.rotation.z = Math.sin(now * 0.0008 + index) * 0.015;
+        billboard.beacon.scaling.setAll(0.9 + Math.sin(now * 0.004 + index) * 0.12);
+      });
 
       const moved = Math.abs(ship.position.x - lastReported.x) > 0.05 || Math.abs(ship.position.y - lastReported.y) > 0.05 || Math.abs(ship.position.z - lastReported.z) > 0.05;
       if (moved && onShipMoveRef.current) {
@@ -947,6 +1123,47 @@ export default function SpaceScene({
         if (mat) {
           const target = selectedEnemyRef.current === enemy.id || localEnemyTargetIdRef.current === enemy.id;
           mat.emissiveColor = target ? new BABYLON.Color3(0.6, 0.03, 0.01) : new BABYLON.Color3(0.18, 0.01, 0.01);
+        }
+      });
+
+      // ---------------- SPACE EVENT ----------------
+      const activeEvent = spaceEventRef.current?.active || null;
+      if (activeEvent) {
+        let eventRoot = spaceEventMeshes.get(activeEvent.id);
+        if (!eventRoot) {
+          eventRoot = new BABYLON.TransformNode(`SpaceEvent${activeEvent.id}`, scene);
+          const coreMat = new BABYLON.StandardMaterial(`SpaceEventCoreMat${activeEvent.id}`, scene);
+          coreMat.emissiveColor = activeEvent.type === "cache" ? new BABYLON.Color3(1, 0.65, 0.08) : activeEvent.type === "distress" ? new BABYLON.Color3(1, 0.12, 0.12) : new BABYLON.Color3(0.1, 0.8, 1);
+          coreMat.disableLighting = true;
+          const core = BABYLON.MeshBuilder.CreateSphere(`SpaceEventCore${activeEvent.id}`, { diameter: 0.9, segments: 12 }, scene);
+          core.parent = eventRoot;
+          core.material = coreMat;
+          const ring = BABYLON.MeshBuilder.CreateTorus(`SpaceEventRing${activeEvent.id}`, { diameter: 2.2, thickness: 0.07, tessellation: 32 }, scene);
+          ring.parent = eventRoot;
+          ring.rotation.x = Math.PI / 2;
+          ring.material = coreMat;
+          const beacon = BABYLON.MeshBuilder.CreateCylinder(`SpaceEventBeacon${activeEvent.id}`, { height: 2.4, diameterTop: 0.02, diameterBottom: 0.18, tessellation: 8 }, scene);
+          beacon.parent = eventRoot;
+          beacon.position.y = 1.2;
+          beacon.material = coreMat;
+          const light = new BABYLON.PointLight(`SpaceEventLight${activeEvent.id}`, new BABYLON.Vector3(0, 0, 0), scene);
+          light.parent = eventRoot;
+          light.intensity = 1.5;
+          light.range = 7;
+          light.diffuse = coreMat.emissiveColor;
+          spaceEventMeshes.set(activeEvent.id, eventRoot);
+        }
+        const eventPos = activeEvent.position || { x: 0, y: 0, z: 0 };
+        eventRoot.position.set(eventPos.x || 0, eventPos.y || 0, eventPos.z || 0);
+        eventRoot.setEnabled(true);
+        eventRoot.rotation.y += 0.012;
+        const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.12;
+        eventRoot.scaling.set(pulse, pulse, pulse);
+      }
+      spaceEventMeshes.forEach((mesh, id) => {
+        if (!activeEvent || id !== activeEvent.id) {
+          mesh.dispose();
+          spaceEventMeshes.delete(id);
         }
       });
 
@@ -1095,11 +1312,12 @@ export default function SpaceScene({
       });
       enemyMeshes.forEach((mesh) => mesh.dispose());
       asteroidMeshes.forEach((mesh) => mesh.dispose());
+      adBillboards.forEach((billboard) => billboard.root.dispose());
       station.dispose();
       scene.dispose();
       engine.dispose();
     };
-  }, [stationPosition]);
+  }, []);
 
   const stationPos = stationPosition || { x: 0, y: 0, z: -22 };
   const targetId = selectedAsteroid ?? localTargetId;
