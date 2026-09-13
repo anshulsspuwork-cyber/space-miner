@@ -21,6 +21,10 @@ export default function SpaceScene({
   const asteroidsRef = useRef(asteroids || []);
   const enemiesRef = useRef(enemies || []);
   const enemyProjectilesRef = useRef(enemyProjectiles || []);
+
+  useEffect(() => {
+    enemyProjectilesRef.current = enemyProjectiles || [];
+  }, [enemyProjectiles]);
   const selectedRef = useRef(selectedAsteroid);
   const selectedEnemyRef = useRef(selectedEnemy);
   const miningRef = useRef(miningActive);
@@ -261,27 +265,128 @@ export default function SpaceScene({
 
     const makeEnemy = (enemy) => {
       if (!enemy) return null;
-      const mesh = BABYLON.MeshBuilder.CreatePolyhedron(`Enemy${enemy.id}`, { type: 2, size: 1.35 }, scene);
+
+      const root = new BABYLON.TransformNode(`Enemy${enemy.id}`, scene);
       const pos = enemy.position || { x: 0, y: 0, z: 0 };
-      mesh.position.set(pos.x || 0, pos.y || 0, pos.z || 0);
-      mesh.scaling.set(enemy.scale || 1, enemy.scale || 1, enemy.scale || 1);
-      const mat = new BABYLON.StandardMaterial(`EnemyMat${enemy.id}`, scene);
-      mat.diffuseColor = new BABYLON.Color3(0.55, 0.04, 0.04);
-      mat.emissiveColor = new BABYLON.Color3(0.22, 0.01, 0.01);
-      mesh.material = mat;
-      mesh.metadata = { enemyId: enemy.id, destroyed: false };
-      mesh.isPickable = true;
-      mesh.actionManager = new BABYLON.ActionManager(scene);
-      mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger, () => {
-        const id = mesh.metadata?.enemyId;
-        const current = enemiesRef.current.find((item) => item.id === id);
-        if (!current || current.destroyed) return;
-        localEnemyTargetIdRef.current = id;
-        setLocalEnemyTargetId(id);
-        if (onEnemyClickRef.current) onEnemyClickRef.current(id);
-      }));
-      enemyMeshes.set(enemy.id, mesh);
-      return mesh;
+      root.position.set(pos.x || 0, pos.y || 0, pos.z || 0);
+      root.scaling.set(enemy.scale || 1, enemy.scale || 1, enemy.scale || 1);
+      root.metadata = { enemyId: enemy.id, destroyed: false };
+
+      const makeMat = (name, diffuse, emissive = null, alpha = 1) => {
+        const mat = new BABYLON.StandardMaterial(`${name}${enemy.id}`, scene);
+        mat.diffuseColor = diffuse;
+        mat.specularColor = new BABYLON.Color3(0.25, 0.25, 0.28);
+        if (emissive) mat.emissiveColor = emissive;
+        if (alpha < 1) mat.alpha = alpha;
+        return mat;
+      };
+
+      const glowMat = (name, color) => {
+        const mat = new BABYLON.StandardMaterial(`${name}${enemy.id}`, scene);
+        mat.emissiveColor = color;
+        mat.disableLighting = true;
+        return mat;
+      };
+
+      const addBox = (name, options, position, material, rotation = null) => {
+        const part = BABYLON.MeshBuilder.CreateBox(`${name}${enemy.id}`, options, scene);
+        part.parent = root;
+        part.position = new BABYLON.Vector3(position.x, position.y, position.z);
+        if (rotation) part.rotation = new BABYLON.Vector3(rotation.x || 0, rotation.y || 0, rotation.z || 0);
+        part.material = material;
+        return part;
+      };
+
+      const addCylinder = (name, options, position, material, rotation = null) => {
+        const part = BABYLON.MeshBuilder.CreateCylinder(`${name}${enemy.id}`, options, scene);
+        part.parent = root;
+        part.position = new BABYLON.Vector3(position.x, position.y, position.z);
+        if (rotation) part.rotation = new BABYLON.Vector3(rotation.x || 0, rotation.y || 0, rotation.z || 0);
+        part.material = material;
+        return part;
+      };
+
+      const addSphere = (name, options, position, material, scaling = null) => {
+        const part = BABYLON.MeshBuilder.CreateSphere(`${name}${enemy.id}`, options, scene);
+        part.parent = root;
+        part.position = new BABYLON.Vector3(position.x, position.y, position.z);
+        if (scaling) part.scaling = new BABYLON.Vector3(scaling.x, scaling.y, scaling.z);
+        part.material = material;
+        return part;
+      };
+
+      const parts = [];
+      const type = String(enemy.type || "PIRATE").toUpperCase();
+
+      if (type === "SCOUT") {
+        // TRADER / CARGO SHIP — chunky rectangular freighter silhouette.
+        const hullMat = makeMat("TraderHull", new BABYLON.Color3(0.12, 0.19, 0.25), new BABYLON.Color3(0.015, 0.035, 0.055));
+        const cargoMat = makeMat("TraderCargo", new BABYLON.Color3(0.23, 0.32, 0.38), new BABYLON.Color3(0.025, 0.045, 0.06));
+        const accentMat = makeMat("TraderAccent", new BABYLON.Color3(0.07, 0.22, 0.34), new BABYLON.Color3(0.01, 0.08, 0.13));
+        const lightMat = glowMat("TraderLight", new BABYLON.Color3(0.1, 0.65, 1));
+
+        parts.push(addBox("TraderHull", { width: 1.55, height: 1.05, depth: 3.25 }, { x: 0, y: 0, z: 0 }, hullMat));
+        parts.push(addBox("TraderCargo1", { width: 1.9, height: 1.25, depth: 1.0 }, { x: 0, y: 0, z: -0.85 }, cargoMat));
+        parts.push(addBox("TraderCargo2", { width: 1.85, height: 1.18, depth: 0.85 }, { x: 0, y: 0, z: -1.65 }, cargoMat));
+        parts.push(addBox("TraderBridge", { width: 1.15, height: 0.7, depth: 0.8 }, { x: 0, y: 0.15, z: 1.45 }, accentMat));
+        parts.push(addBox("TraderWingL", { width: 1.15, height: 0.16, depth: 1.25 }, { x: -1.05, y: -0.05, z: -0.25 }, accentMat, { x: 0, y: -0.08, z: 0 }));
+        parts.push(addBox("TraderWingR", { width: 1.15, height: 0.16, depth: 1.25 }, { x: 1.05, y: -0.05, z: -0.25 }, accentMat, { x: 0, y: 0.08, z: 0 }));
+        parts.push(addCylinder("TraderAntenna", { height: 1.0, diameter: 0.08, tessellation: 8 }, { x: 0, y: 0.7, z: -0.1 }, accentMat));
+        parts.push(addSphere("TraderCockpit", { diameter: 0.62, segments: 12 }, { x: 0, y: 0.35, z: 1.75 }, lightMat, { x: 1.15, y: 0.55, z: 1.2 }));
+        parts.push(addSphere("TraderEngineL", { diameter: 0.36 }, { x: -0.58, y: 0, z: -1.95 }, lightMat));
+        parts.push(addSphere("TraderEngineR", { diameter: 0.36 }, { x: 0.58, y: 0, z: -1.95 }, lightMat));
+      } else if (type === "RAIDER") {
+        // SECURITY SHIP — sleek patrol fighter with wide swept wings.
+        const hullMat = makeMat("SecurityHull", new BABYLON.Color3(0.22, 0.28, 0.32), new BABYLON.Color3(0.02, 0.035, 0.05));
+        const wingMat = makeMat("SecurityWing", new BABYLON.Color3(0.08, 0.15, 0.21), new BABYLON.Color3(0.01, 0.025, 0.04));
+        const accentMat = makeMat("SecurityAccent", new BABYLON.Color3(0.3, 0.36, 0.39), new BABYLON.Color3(0.025, 0.035, 0.04));
+        const lightMat = glowMat("SecurityLight", new BABYLON.Color3(0.1, 0.55, 1));
+
+        parts.push(addCylinder("SecurityHull", { height: 3.8, diameterTop: 0.12, diameterBottom: 1.05, tessellation: 6 }, { x: 0, y: 0, z: 0 }, hullMat, { x: Math.PI / 2, y: 0, z: 0 }));
+        parts.push(addBox("SecurityWingL", { width: 2.7, height: 0.16, depth: 1.0 }, { x: -1.0, y: 0, z: -0.15 }, wingMat, { x: 0, y: -0.28, z: 0 }));
+        parts.push(addBox("SecurityWingR", { width: 2.7, height: 0.16, depth: 1.0 }, { x: 1.0, y: 0, z: -0.15 }, wingMat, { x: 0, y: 0.28, z: 0 }));
+        parts.push(addBox("SecurityTailL", { width: 0.22, height: 0.65, depth: 0.85 }, { x: -0.52, y: 0.28, z: -1.45 }, accentMat, { x: 0.2, y: 0, z: -0.1 }));
+        parts.push(addBox("SecurityTailR", { width: 0.22, height: 0.65, depth: 0.85 }, { x: 0.52, y: 0.28, z: -1.45 }, accentMat, { x: 0.2, y: 0, z: 0.1 }));
+        parts.push(addSphere("SecurityCockpit", { diameter: 0.72, segments: 12 }, { x: 0, y: 0.28, z: 1.05 }, lightMat, { x: 0.95, y: 0.45, z: 1.3 }));
+        parts.push(addSphere("SecurityEngineL", { diameter: 0.34 }, { x: -0.48, y: 0, z: -1.85 }, lightMat));
+        parts.push(addSphere("SecurityEngineR", { diameter: 0.34 }, { x: 0.48, y: 0, z: -1.85 }, lightMat));
+        parts.push(addBox("SecurityGunL", { width: 0.18, height: 0.18, depth: 1.0 }, { x: -1.25, y: -0.02, z: 0.75 }, accentMat));
+        parts.push(addBox("SecurityGunR", { width: 0.18, height: 0.18, depth: 1.0 }, { x: 1.25, y: -0.02, z: 0.75 }, accentMat));
+      } else {
+        // PIRATE SHIP — aggressive red fighter with pointed nose and tall fins.
+        const hullMat = makeMat("PirateHull", new BABYLON.Color3(0.28, 0.045, 0.04), new BABYLON.Color3(0.12, 0.008, 0.006));
+        const wingMat = makeMat("PirateWing", new BABYLON.Color3(0.12, 0.025, 0.03), new BABYLON.Color3(0.05, 0.004, 0.006));
+        const metalMat = makeMat("PirateMetal", new BABYLON.Color3(0.23, 0.24, 0.25), new BABYLON.Color3(0.02, 0.02, 0.02));
+        const lightMat = glowMat("PirateLight", new BABYLON.Color3(1, 0.05, 0.02));
+
+        parts.push(addCylinder("PirateHull", { height: 4.2, diameterTop: 0.05, diameterBottom: 1.15, tessellation: 5 }, { x: 0, y: 0, z: 0 }, hullMat, { x: Math.PI / 2, y: 0, z: 0 }));
+        parts.push(addBox("PirateWingL", { width: 2.9, height: 0.18, depth: 1.15 }, { x: -1.05, y: 0, z: -0.1 }, wingMat, { x: 0, y: -0.45, z: 0.08 }));
+        parts.push(addBox("PirateWingR", { width: 2.9, height: 0.18, depth: 1.15 }, { x: 1.05, y: 0, z: -0.1 }, wingMat, { x: 0, y: 0.45, z: -0.08 }));
+        parts.push(addBox("PirateFinL", { width: 0.2, height: 1.25, depth: 0.65 }, { x: -0.48, y: 0.65, z: -0.9 }, hullMat, { x: -0.2, y: 0, z: -0.15 }));
+        parts.push(addBox("PirateFinR", { width: 0.2, height: 1.25, depth: 0.65 }, { x: 0.48, y: 0.65, z: -0.9 }, hullMat, { x: -0.2, y: 0, z: 0.15 }));
+        parts.push(addSphere("PirateCockpit", { diameter: 0.7, segments: 12 }, { x: 0, y: 0.25, z: 1.25 }, metalMat, { x: 0.95, y: 0.45, z: 1.3 }));
+        parts.push(addSphere("PirateEngineL", { diameter: 0.48 }, { x: -0.55, y: 0, z: -1.95 }, lightMat));
+        parts.push(addSphere("PirateEngineR", { diameter: 0.48 }, { x: 0.55, y: 0, z: -1.95 }, lightMat));
+        parts.push(addBox("PirateGunL", { width: 0.22, height: 0.22, depth: 1.15 }, { x: -1.3, y: -0.08, z: 0.55 }, metalMat));
+        parts.push(addBox("PirateGunR", { width: 0.22, height: 0.22, depth: 1.15 }, { x: 1.3, y: -0.08, z: 0.55 }, metalMat));
+      }
+
+      parts.forEach((part) => {
+        part.metadata = { enemyId: enemy.id, destroyed: false };
+        part.isPickable = true;
+        part.actionManager = new BABYLON.ActionManager(scene);
+        part.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger, () => {
+          const id = part.metadata?.enemyId;
+          const current = enemiesRef.current.find((item) => item.id === id);
+          if (!current || current.destroyed) return;
+          localEnemyTargetIdRef.current = id;
+          setLocalEnemyTargetId(id);
+          if (onEnemyClickRef.current) onEnemyClickRef.current(id);
+        }));
+      });
+
+      enemyMeshes.set(enemy.id, root);
+      return root;
     };
 
     const disposeEnemyTargetRing = () => {

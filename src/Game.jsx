@@ -9,6 +9,7 @@ export default function Game() {
   const [selectedAsteroid, setSelectedAsteroid] = useState(null);
   const [selectedEnemy, setSelectedEnemy] = useState(null);
   const [message, setMessage] = useState("");
+  const [stationContact, setStationContact] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const animationFrameRef = useRef(null);
   const lastTimeRef = useRef(Date.now());
@@ -120,6 +121,22 @@ export default function Game() {
     setGameState(game.getGameState());
   };
 
+  const handleRefuel = () => {
+    if (!game) return;
+    const result = game.refuelAtStation();
+    showMessage(result.success ? `⛽ ${result.message}` : `⚠️ ${result.message}`);
+    if (result.success) game.saveGame();
+    setGameState(game.getGameState());
+  };
+
+  const handleRepair = () => {
+    if (!game) return;
+    const result = game.repairShipAtStation();
+    showMessage(result.success ? `🔧 ${result.message}` : `⚠️ ${result.message}`);
+    if (result.success) game.saveGame();
+    setGameState(game.getGameState());
+  };
+
   const handleUpgradeShip = () => {
     if (!game || !gameState) return;
 
@@ -136,6 +153,14 @@ export default function Game() {
       showMessage("❌ Not enough credits for this upgrade.");
     }
   };
+
+  const handleStationContact = useCallback((contactId) => {
+    if (!game) return;
+    const result = game.interactWithStationContact(contactId);
+    if (result.success) setStationContact(contactId);
+    showMessage(result.success ? `🧑‍🚀 ${result.message}` : `⚠️ ${result.message}`, 2800);
+    setGameState(game.getGameState());
+  }, [game, showMessage]);
 
   const handleManualSave = useCallback(() => {
     if (!game) return;
@@ -206,6 +231,10 @@ export default function Game() {
     enemies,
     combat,
     sectorInfo,
+    market,
+    economy = { fuelPrice: 3, repairHullPrice: 5, repairShieldPrice: 2 },
+    reputation = { name: "Newcomer", next: 100 },
+    stationContacts = [],
   } = gameState;
 
   const currentAsteroid = miningTarget !== null && miningTarget !== undefined
@@ -219,13 +248,16 @@ export default function Game() {
   const inventoryEntries = Object.entries(player.inventory.ores || {}).filter(([, amount]) => amount > 0.01);
 
   const cargoValue = inventoryEntries.reduce((total, [type, amount]) => {
-    return total + amount * (oreTypes[type]?.price || 0);
+    return total + amount * (market?.prices?.[type] ?? oreTypes[type]?.price ?? 0);
   }, 0);
 
   const stationDistance = station?.distance ?? 999;
   const docked = Boolean(station?.docked);
   const cargoFull = player.inventory.ore >= player.ship.cargoCapacity - 0.01;
   const nextUpgradeCost = 500 * player.ship.level;
+  const fuel = Number(player.ship.fuel || 0);
+  const maxFuel = Number(player.ship.maxFuel || 100);
+  const fuelPercent = Math.min(100, (fuel / maxFuel) * 100);
 
   return (
     <div className="space-game">
@@ -256,6 +288,10 @@ export default function Game() {
           <div className={`top-stat cargo-top ${cargoFull ? "danger" : ""}`}>
             <span>CARGO</span>
             <strong>{player.inventory.ore.toFixed(1)} / {player.ship.cargoCapacity}</strong>
+          </div>
+          <div className={`top-stat fuel-top ${fuel < maxFuel * 0.2 ? "danger" : ""}`}>
+            <span>FUEL</span>
+            <strong>⛽ {fuel.toFixed(0)}%</strong>
           </div>
           <div className="top-combat-stat"><span>HULL</span><strong>🛡️ {combat.health.toFixed(0)} / {combat.shield.toFixed(0)}</strong></div>
           <div className={`top-dock ${docked ? "docked" : ""}`}>
@@ -305,10 +341,41 @@ export default function Game() {
           >
             {docked ? "💰 SELL ALL CARGO" : "🔒 FLY TO STATION"}
           </button>
+          <div className="station-service-grid">
+            <button className="btn btn-service" onClick={handleRefuel} disabled={!docked || fuel >= maxFuel - 0.01}>⛽ REFUEL</button>
+            <button className="btn btn-service" onClick={handleRepair} disabled={!docked || (combat.health >= combat.maxHealth && combat.shield >= combat.maxShield)}>🔧 REPAIR</button>
+          </div>
+          <p className="service-cost">Fuel: {economy.fuelPrice} CR/unit • Hull: {economy.repairHullPrice} CR • Shield: {economy.repairShieldPrice} CR</p>
           <p className="station-hint">
             {docked ? "Sell your cargo here. Upgrades are also available while docked." : "Fly to the glowing station and enter the green docking ring."}
           </p>
         </section>
+
+        {docked && (
+          <section className="panel station-hub-panel">
+            <div className="panel-title-row"><h3>🧑‍🚀 STATION HUB</h3><span className="rank-badge">{reputation?.name || "Newcomer"}</span></div>
+            <div className="reputation-row">
+              <span>REPUTATION</span>
+              <strong>{player.progress?.reputation || 0}{reputation?.next ? ` / ${reputation.next}` : " / MAX"}</strong>
+            </div>
+            <div className="reputation-meter"><div style={{ width: `${reputation?.next ? Math.min(100, ((player.progress?.reputation || 0) / reputation.next) * 100) : 100}%` }} /></div>
+            <div className="station-npc-grid">
+              {(stationContacts || []).map((contact) => (
+                <button
+                  key={contact.id}
+                  className={`npc-card ${contact.available ? "available" : "locked"} ${stationContact === contact.id ? "selected" : ""}`}
+                  onClick={() => handleStationContact(contact.id)}
+                  disabled={!contact.available}
+                >
+                  <span className="npc-icon">{contact.icon}</span>
+                  <strong>{contact.name}</strong>
+                  <small>{contact.available ? contact.role : `🔒 Rep ${contact.unlock}`}</small>
+                </button>
+              ))}
+            </div>
+            <p className="station-hint">Complete missions, sell ore, and defeat enemies to build reputation and unlock station personnel.</p>
+          </section>
+        )}
 
         <section className="panel">
           <h3>🚀 SHIP STATUS</h3>
@@ -321,6 +388,8 @@ export default function Game() {
           <div className="cargo-meter-label"><span>CARGO CAPACITY</span><strong>{player.inventory.ore.toFixed(1)} / {player.ship.cargoCapacity}</strong></div>
           <div className="cargo-meter"><div style={{ width: `${Math.min(100, (player.inventory.ore / player.ship.cargoCapacity) * 100)}%` }} /></div>
           <div className="cargo-value">Estimated cargo value: <strong>{cargoValue.toFixed(0)} CR</strong></div>
+          <div className="cargo-meter-label fuel-label"><span>FUEL TANK</span><strong>{fuel.toFixed(1)} / {maxFuel.toFixed(0)}</strong></div>
+          <div className="fuel-meter"><div style={{ width: `${fuelPercent}%` }} /></div>
         </section>
 
         <section className="panel combat-panel">
@@ -366,7 +435,7 @@ export default function Game() {
           <div className="upgrade-info">
             <p>Next level: <strong>{player.ship.level + 1}</strong></p>
             <p>Cost: <strong>{nextUpgradeCost} CR</strong></p>
-            <p className="upgrade-bonus">+50 cargo • +0.5 mining/s • +1.5 speed</p>
+            <p className="upgrade-bonus">+50 cargo • +0.5 mining/s • +1.5 speed • +10 max fuel</p>
           </div>
           <button className="btn btn-upgrade" onClick={handleUpgradeShip} disabled={!docked || player.credits < nextUpgradeCost}>
             {!docked ? "🔒 DOCK TO UPGRADE" : player.credits < nextUpgradeCost ? "NOT ENOUGH CREDITS" : "🚀 UPGRADE SHIP"}
@@ -396,11 +465,12 @@ export default function Game() {
         </section>
 
         <section className="panel">
-          <h3>📈 ORE MARKET</h3>
+          <div className="panel-title-row"><h3>📈 ORE MARKET</h3><span className="market-live">LIVE</span></div>
+          <p className="station-hint">Prices change every minute and vary by sector. Sell while the market is favorable.</p>
           {Object.values(oreTypes).map((ore) => (
             <div key={ore.id} className="ore-market-row">
               <span>{ore.symbol} {ore.name}</span>
-              <strong>{ore.price} CR</strong>
+              <strong>{market?.prices?.[ore.id] ?? ore.price} CR</strong>
             </div>
           ))}
         </section>
@@ -460,6 +530,7 @@ export default function Game() {
           <p>🔍 Wheel → Zoom</p>
           <p>⛏️ Click asteroid → Target / Mine</p>
           <p>⚔️ Click enemy → Target • F → Fire weapon</p>
+          <p>⛽ Fuel is consumed while flying • Dock to refuel/repair</p>
           <p>📱 Joystick → Move</p>
         </section>
       </aside>

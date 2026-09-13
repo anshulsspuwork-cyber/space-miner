@@ -110,6 +110,7 @@ export class GameEngine {
         totalCreditsEarned: 0,
         totalCreditsFromSales: 0,
         totalUpgrades: 0,
+        reputation: 0,
       },
     };
 
@@ -135,6 +136,27 @@ export class GameEngine {
         y: 0,
         z: -22,
       },
+    };
+
+    this.stationContacts = [
+      { id: "quartermaster", name: "Mira", role: "Quartermaster", icon: "📦", unlock: 0 },
+      { id: "engineer", name: "Kade", role: "Chief Engineer", icon: "🔧", unlock: 20 },
+      { id: "broker", name: "Voss", role: "Market Broker", icon: "💰", unlock: 40 },
+      { id: "mission", name: "Commander Rhea", role: "Mission Officer", icon: "🎯", unlock: 60 },
+    ];
+
+    // ==================================================
+    // ECONOMY / SHIP RESOURCES
+    // ==================================================
+
+    this.player.ship.fuel = 100;
+    this.player.ship.maxFuel = 100;
+    this.economy = {
+      fuelPrice: 3,
+      repairHullPrice: 5,
+      repairShieldPrice: 2,
+      marketUpdatedAt: Date.now(),
+      marketCycle: Math.floor(Date.now() / 60000),
     };
 
     // ==================================================
@@ -488,18 +510,50 @@ export class GameEngine {
   // ENEMY GENERATION
   // ====================================================
 
-  generateEnemyPosition() {
+  generateEnemyPosition(existingPositions = []) {
     let position;
+    let attempts = 0;
     do {
+      // Keep NPCs reasonably close to the playable area so they are visible
+      // when entering a sector, while still spreading them around the player.
       position = {
-        x: this.randomBetween(-27, 27),
-        y: this.randomBetween(-12, 12),
-        z: this.randomBetween(-27, 27),
+        x: this.randomBetween(-22, 22),
+        y: this.randomBetween(-9, 9),
+        z: this.randomBetween(-22, 22),
       };
-    } while (
-      Math.sqrt(position.x * position.x + position.y * position.y + position.z * position.z) < 12
-    );
+      attempts += 1;
+
+      const distanceFromOrigin = Math.sqrt(
+        position.x * position.x +
+        position.y * position.y +
+        position.z * position.z
+      );
+
+      let tooCloseToAnotherNpc = false;
+      for (let i = 0; i < existingPositions.length; i += 1) {
+        const other = existingPositions[i];
+        const dx = position.x - other.x;
+        const dy = position.y - other.y;
+        const dz = position.z - other.z;
+        if (Math.sqrt(dx * dx + dy * dy + dz * dz) < 5) {
+          tooCloseToAnotherNpc = true;
+          break;
+        }
+      }
+
+      if (distanceFromOrigin >= 10 && !tooCloseToAnotherNpc) {
+        break;
+      }
+    } while (attempts < 50);
     return position;
+  }
+
+  generateEnemyRoamTarget() {
+    return {
+      x: this.randomBetween(-24, 24),
+      y: this.randomBetween(-10, 10),
+      z: this.randomBetween(-24, 24),
+    };
   }
 
   createEnemy(id, sectorLevel = 0) {
@@ -522,6 +576,8 @@ export class GameEngine {
       sectorLevel,
       type: type.name,
       position: this.generateEnemyPosition(),
+      roamTarget: this.generateEnemyRoamTarget(),
+      roamWait: this.randomBetween(0.2, 1.5),
       health: type.health,
       maxHealth: type.health,
       speed: type.speed,
@@ -530,7 +586,7 @@ export class GameEngine {
       scale: type.scale,
       attackCooldown: this.randomBetween(0.8, 1.8),
       projectileSpeed: 15 + sectorLevel * 1.5,
-      projectileRange: 30,
+      projectileRange: 60,
       respawnAt: null,
       destroyed: false,
     };
@@ -538,7 +594,13 @@ export class GameEngine {
 
   generateEnemies(count, sectorLevel = 0) {
     const enemies = [];
-    for (let i = 0; i < count; i += 1) enemies.push(this.createEnemy(i, sectorLevel));
+    const positions = [];
+    for (let i = 0; i < count; i += 1) {
+      const enemy = this.createEnemy(i, sectorLevel);
+      enemy.position = this.generateEnemyPosition(positions);
+      positions.push({ ...enemy.position });
+      enemies.push(enemy);
+    }
     return enemies;
   }
 
@@ -578,6 +640,7 @@ export class GameEngine {
       this.player.credits += enemy.reward;
       this.player.progress.totalCreditsEarned += enemy.reward;
       this.combat.kills += 1;
+      this.player.progress.reputation = Number(this.player.progress.reputation || 0) + 8;
       this.checkMissions();
       return {
         success: true,
@@ -619,30 +682,59 @@ export class GameEngine {
       }
 
       enemy.attackCooldown = Math.max(0, Number(enemy.attackCooldown || 0) - dt);
-      const distance = this.getDistanceToEnemy(enemy);
+      enemy.roamWait = Math.max(0, Number(enemy.roamWait || 0) - dt);
+
+      // NPCs now wander through the sector using independent waypoints.
+      // They never steer toward the player, so they feel like independent ships.
+      if (!enemy.roamTarget || enemy.roamWait <= 0) {
+        enemy.roamTarget = this.generateEnemyRoamTarget();
+        enemy.roamWait = this.randomBetween(1.5, 4.0);
+      }
+
+      const tx = enemy.roamTarget.x - enemy.position.x;
+      const ty = enemy.roamTarget.y - enemy.position.y;
+      const tz = enemy.roamTarget.z - enemy.position.z;
+      const targetDistance = Math.sqrt(tx * tx + ty * ty + tz * tz);
+
+      if (targetDistance > 0.8) {
+        const targetLen = targetDistance || 1;
+        enemy.position.x += (tx / targetLen) * enemy.speed * dt;
+        enemy.position.y += (ty / targetLen) * enemy.speed * dt;
+        enemy.position.z += (tz / targetLen) * enemy.speed * dt;
+      } else {
+        enemy.roamTarget = this.generateEnemyRoamTarget();
+        enemy.roamWait = this.randomBetween(0.4, 1.2);
+      }
+
+      // Keep NPCs inside the sector play area.
+      enemy.position.x = Math.max(-26, Math.min(26, enemy.position.x));
+      enemy.position.y = Math.max(-11, Math.min(11, enemy.position.y));
+      enemy.position.z = Math.max(-26, Math.min(26, enemy.position.z));
+
       const ship = this.player.ship.position;
       const dx = ship.x - enemy.position.x;
       const dy = ship.y - enemy.position.y;
       const dz = ship.z - enemy.position.z;
-      const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const len = distance || 1;
 
-      if (distance < 25 && distance > 8) {
-        enemy.position.x += (dx / len) * enemy.speed * dt;
-        enemy.position.y += (dy / len) * enemy.speed * dt;
-        enemy.position.z += (dz / len) * enemy.speed * dt;
-      }
-
-      if (distance <= 24 && enemy.attackCooldown <= 0 && now >= this.combat.invulnerableUntil) {
+      // Hostile ships can still fire when they happen to pass within range,
+      // but firing does not change their random movement path.
+      if (distance <= 55 && distance >= 8 && enemy.attackCooldown <= 0) {
         this.combat.projectiles.push({
           id: `${enemy.id}-${now}-${Math.random().toString(36).slice(2, 7)}`,
           enemyId: enemy.id,
           position: { ...enemy.position },
-          velocity: { x: (dx / len) * enemy.projectileSpeed, y: (dy / len) * enemy.projectileSpeed, z: (dz / len) * enemy.projectileSpeed },
+          velocity: {
+            x: (dx / len) * enemy.projectileSpeed,
+            y: (dy / len) * enemy.projectileSpeed,
+            z: (dz / len) * enemy.projectileSpeed,
+          },
           damage: enemy.damage,
           distance: 0,
           maxDistance: enemy.projectileRange,
         });
-        enemy.attackCooldown = this.randomBetween(1.4, 2.4);
+        enemy.attackCooldown = 2.0;
       }
     });
 
@@ -698,11 +790,20 @@ export class GameEngine {
   setShipPosition(
     position
   ) {
+    const previous = this.player.ship.position || { x: 0, y: 0, z: 0 };
+    const dx = Number(position.x || 0) - Number(previous.x || 0);
+    const dy = Number(position.y || 0) - Number(previous.y || 0);
+    const dz = Number(position.z || 0) - Number(previous.z || 0);
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const fuel = Number(this.player.ship.fuel ?? this.player.ship.maxFuel ?? 100);
+    if (fuel <= 0 && distance > 0) return;
+    const maxDistance = fuel > 0 ? distance : 0;
     this.player.ship.position = {
-      x: position.x,
-      y: position.y,
-      z: position.z,
+      x: previous.x + (dx * (maxDistance ? 1 : 0)),
+      y: previous.y + (dy * (maxDistance ? 1 : 0)),
+      z: previous.z + (dz * (maxDistance ? 1 : 0)),
     };
+    if (distance > 0) this.consumeFuel(distance);
   }
 
   // ====================================================
@@ -764,6 +865,69 @@ export class GameEngine {
   // ====================================================
   isDocked() {
     return this.getDistanceToStation() <= this.station.dockingRange;
+  }
+
+  // ====================================================
+  // DYNAMIC MARKET
+  // ====================================================
+  updateMarket() {
+    const cycle = Math.floor(Date.now() / 60000);
+    if (cycle !== this.economy.marketCycle) {
+      this.economy.marketCycle = cycle;
+      this.economy.marketUpdatedAt = Date.now();
+    }
+  }
+
+  getMarketPrice(oreType) {
+    this.updateMarket();
+    const ore = this.oreTypes[oreType];
+    if (!ore) return 0;
+    const sectorLevel = this.universe.currentSector || 0;
+    const seed = Math.sin((this.economy.marketCycle + 1) * (ore.rarity + 3) * 12.9898 + (sectorLevel + 1) * 78.233);
+    const fluctuation = 0.82 + ((seed + 1) / 2) * 0.46;
+    const sectorBonus = 1 + sectorLevel * 0.035;
+    return Math.max(1, Math.round(ore.price * fluctuation * sectorBonus));
+  }
+
+  getMarketPrices() {
+    this.updateMarket();
+    return Object.fromEntries(Object.keys(this.oreTypes).map((id) => [id, this.getMarketPrice(id)]));
+  }
+
+  // ====================================================
+  // FUEL
+  // ====================================================
+  consumeFuel(distance) {
+    if (!this.player.ship) return;
+    const amount = Math.max(0, Number(distance || 0)) * 0.035;
+    this.player.ship.fuel = Math.max(0, Number(this.player.ship.fuel ?? this.player.ship.maxFuel ?? 100) - amount);
+  }
+
+  refuelAtStation() {
+    if (!this.isDocked()) return { success: false, message: `Dock at the station to refuel.` };
+    const maxFuel = Number(this.player.ship.maxFuel || 100);
+    const fuel = Number(this.player.ship.fuel || 0);
+    const needed = Math.max(0, maxFuel - fuel);
+    if (needed < 0.01) return { success: false, message: "Fuel tank is already full." };
+    const cost = Math.ceil(needed * this.economy.fuelPrice);
+    if (this.player.credits < cost) return { success: false, message: `Refueling needs ${cost} CR.` };
+    this.player.credits -= cost;
+    this.player.ship.fuel = maxFuel;
+    return { success: true, cost, message: `Refueled ${needed.toFixed(1)} units for ${cost} CR.` };
+  }
+
+  repairShipAtStation() {
+    if (!this.isDocked()) return { success: false, message: "Dock at the station to repair your ship." };
+    const hullMissing = Math.max(0, this.combat.maxHealth - this.combat.health);
+    const shieldMissing = Math.max(0, this.combat.maxShield - this.combat.shield);
+    const cost = Math.ceil(hullMissing * this.economy.repairHullPrice + shieldMissing * this.economy.repairShieldPrice);
+    if (hullMissing < 0.01 && shieldMissing < 0.01) return { success: false, message: "Ship systems are already fully repaired." };
+    if (this.player.credits < cost) return { success: false, message: `Repair needs ${cost} CR.` };
+    this.player.credits -= cost;
+    this.combat.health = this.combat.maxHealth;
+    this.combat.shield = this.combat.maxShield;
+    this.combat.invulnerableUntil = Date.now() + 1500;
+    return { success: true, cost, message: `Ship repaired for ${cost} CR.` };
   }
 
   // ====================================================
@@ -1123,7 +1287,7 @@ export class GameEngine {
         ) {
           totalCredits +=
             amount *
-            definition.price;
+            this.getMarketPrice(oreType);
         }
       }
     );
@@ -1132,6 +1296,7 @@ export class GameEngine {
       totalCredits;
     this.player.progress.totalCreditsEarned += totalCredits;
     this.player.progress.totalCreditsFromSales += totalCredits;
+    this.player.progress.reputation = Number(this.player.progress.reputation || 0) + Math.max(1, Math.floor(totalCredits / 250));
 
     // Empty inventory
     Object.keys(
@@ -1184,6 +1349,8 @@ export class GameEngine {
 
     this.player.ship.speed +=
       1.5;
+    this.player.ship.maxFuel += 10;
+    this.player.ship.fuel = this.player.ship.maxFuel;
     this.player.progress.totalUpgrades += 1;
 
     this.combat.weaponDamage += 5;
@@ -1254,6 +1421,7 @@ export class GameEngine {
       if (mission.progress >= mission.target) {
         mission.completed = true;
         this.player.credits += mission.reward;
+        this.player.progress.reputation = Number(this.player.progress.reputation || 0) + 10;
         // Mission rewards are deliberately not counted toward the
         // "earn credits" objective, preventing reward chains.
       }
@@ -1271,12 +1439,14 @@ export class GameEngine {
         totalCreditsEarned: 0,
         totalCreditsFromSales: 0,
         totalUpgrades: 0,
+        reputation: 0,
       };
     } else {
       this.player.progress.totalMined = Number(this.player.progress.totalMined || 0);
       this.player.progress.totalCreditsEarned = Number(this.player.progress.totalCreditsEarned || 0);
       this.player.progress.totalCreditsFromSales = Number(this.player.progress.totalCreditsFromSales || 0);
       this.player.progress.totalUpgrades = Number(this.player.progress.totalUpgrades || 0);
+      this.player.progress.reputation = Number(this.player.progress.reputation || 0);
     }
 
     // Convert old mission saves to the current mission structure.
@@ -1348,6 +1518,16 @@ export class GameEngine {
       }
     }
 
+    if (!this.player.ship.maxFuel || typeof this.player.ship.maxFuel !== "number") this.player.ship.maxFuel = 100;
+    if (typeof this.player.ship.fuel !== "number") this.player.ship.fuel = this.player.ship.maxFuel;
+    this.player.ship.fuel = Math.max(0, Math.min(this.player.ship.maxFuel, this.player.ship.fuel));
+
+    if (!this.economy) this.economy = { fuelPrice: 3, repairHullPrice: 5, repairShieldPrice: 2, marketUpdatedAt: Date.now(), marketCycle: Math.floor(Date.now() / 60000) };
+    if (typeof this.economy.fuelPrice !== "number") this.economy.fuelPrice = 3;
+    if (typeof this.economy.repairHullPrice !== "number") this.economy.repairHullPrice = 5;
+    if (typeof this.economy.repairShieldPrice !== "number") this.economy.repairShieldPrice = 2;
+    if (typeof this.economy.marketCycle !== "number") this.economy.marketCycle = Math.floor(Date.now() / 60000);
+
     if (
       !this.player.ship
         .position
@@ -1403,7 +1583,24 @@ export class GameEngine {
       if (!Array.isArray(sector.asteroids)) sector.asteroids = this.generateAsteroids(10, index);
       if (!Array.isArray(sector.enemies)) sector.enemies = this.generateEnemies(4, index);
       sector.asteroids.forEach((asteroid) => { asteroid.sectorLevel = index; });
-      sector.enemies.forEach((enemy) => { enemy.sectorLevel = index; });
+      // Normalize old saves and guarantee every sector has NPCs.
+      if (sector.enemies.length < 3) {
+        const needed = 3 - sector.enemies.length;
+        const startId = sector.enemies.reduce((max, enemy) => Math.max(max, Number(enemy.id) || 0), -1) + 1;
+        for (let i = 0; i < needed; i += 1) {
+          sector.enemies.push(this.createEnemy(startId + i, index));
+        }
+      }
+      sector.enemies.forEach((enemy, enemyIndex) => {
+        enemy.sectorLevel = index;
+        if (!enemy.position) enemy.position = this.generateEnemyPosition();
+        if (!enemy.roamTarget) enemy.roamTarget = this.generateEnemyRoamTarget();
+        if (typeof enemy.roamWait !== "number") enemy.roamWait = this.randomBetween(0.2, 1.5);
+        if (typeof enemy.projectileSpeed !== "number") enemy.projectileSpeed = 15 + index * 1.5;
+        if (typeof enemy.projectileRange !== "number") enemy.projectileRange = 60;
+        if (typeof enemy.attackCooldown !== "number") enemy.attackCooldown = 1 + enemyIndex * 0.25;
+        if (typeof enemy.damage !== "number") enemy.damage = 7 + index;
+      });
     });
 
     // Old asteroid compatibility
@@ -1486,6 +1683,36 @@ export class GameEngine {
   }
 
   // ====================================================
+  // STATION HUB / NPCs
+  // ====================================================
+
+  getReputationRank() {
+    const rep = Number(this.player.progress?.reputation || 0);
+    if (rep >= 100) return { name: "Elite Miner", next: null, progress: 100 };
+    if (rep >= 60) return { name: "Veteran", next: 100, progress: rep };
+    if (rep >= 40) return { name: "Trusted", next: 60, progress: rep };
+    if (rep >= 20) return { name: "Regular", next: 40, progress: rep };
+    return { name: "Newcomer", next: 20, progress: rep };
+  }
+
+  interactWithStationContact(contactId) {
+    if (!this.isDocked()) return { success: false, message: "Dock at the Mining Station to speak with station personnel." };
+    const contact = this.stationContacts.find((item) => item.id === contactId);
+    if (!contact) return { success: false, message: "Station contact unavailable." };
+    const rep = Number(this.player.progress?.reputation || 0);
+    if (rep < contact.unlock) {
+      return { success: false, message: `${contact.name} is not available yet. Reputation ${contact.unlock} required.` };
+    }
+    const lines = {
+      quartermaster: "Cargo supplies are ready. Keep your hold clear before long mining runs.",
+      engineer: "Your ship is holding together. Bring credits and I can keep improving it.",
+      broker: "Watch the market cycle. Rare ores can spike when deeper sectors open up.",
+      mission: "The frontier needs miners who can fight and deliver. Check your contracts regularly.",
+    };
+    return { success: true, message: `${contact.name} — ${lines[contact.id]}` };
+  }
+
+  // ====================================================
   // SAVE GAME
   // ====================================================
 
@@ -1501,6 +1728,9 @@ export class GameEngine {
 
       combat:
         this.combat,
+
+      economy:
+        this.economy,
     };
 
     localStorage.setItem(
@@ -1554,6 +1784,13 @@ export class GameEngine {
 
       if (data.combat) {
         this.combat = data.combat;
+      }
+
+      if (data.economy) {
+        this.economy = {
+          ...this.economy,
+          ...data.economy,
+        };
       }
 
       this.normalizePlayer();
@@ -1629,6 +1866,25 @@ export class GameEngine {
 
       oreTypes:
         this.oreTypes,
+
+      market: {
+        prices: this.getMarketPrices(),
+        updatedAt: this.economy?.marketUpdatedAt ?? Date.now(),
+        cycle: this.economy?.marketCycle ?? Math.floor(Date.now() / 60000),
+      },
+
+      economy: {
+        fuelPrice: this.economy?.fuelPrice ?? 3,
+        repairHullPrice: this.economy?.repairHullPrice ?? 5,
+        repairShieldPrice: this.economy?.repairShieldPrice ?? 2,
+      },
+
+      reputation: this.getReputationRank(),
+
+      stationContacts: this.stationContacts.map((contact) => ({
+        ...contact,
+        available: Number(this.player.progress?.reputation || 0) >= contact.unlock && this.isDocked(),
+      })),
 
       station: {
         ...this.station,

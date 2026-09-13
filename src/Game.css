@@ -686,3 +686,125 @@ button { font: inherit; }
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* ==================================================
+   PHASE 7 - ECONOMY / FUEL / STATION SERVICES
+   ================================================== */
+.fuel-top { border-color: rgba(255, 190, 75, .22); }
+.fuel-top strong { color: #ffd477; }
+.fuel-label { margin-top: 9px; }
+.fuel-meter {
+  height: 6px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255,255,255,.08);
+}
+.fuel-meter div {
+  height: 100%;
+  background: #ffc857;
+  box-shadow: 0 0 10px rgba(255,200,87,.35);
+  transition: width .15s linear;
+}
+.station-service-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 8px;
+}
+.btn-service {
+  min-height: 34px;
+  border-color: rgba(255, 200, 87, .38);
+  background: rgba(255, 200, 87, .08);
+  color: #ffd98a;
+}
+.btn-service:hover:not(:disabled) {
+  border-color: rgba(255, 200, 87, .7);
+  background: rgba(255, 200, 87, .14);
+}
+.service-cost {
+  margin: 6px 0 0 !important;
+  color: #7f8b72 !important;
+  font-size: 8px !important;
+}
+.market-live {
+  padding: 3px 6px;
+  border-radius: 5px;
+  color: #00ff9d;
+  background: rgba(0,255,157,.08);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 1px;
+}
+.ore-market-row strong { color: #ffd76e; }
+@media (max-width: 900px) {
+  .fuel-top { display: none; }
+}
+
+/* ==================================================
+   PHASE 8 - STATION HUB / REPUTATION
+   ================================================== */
+.station-hub-panel { border-color: rgba(112, 191, 255, .24); }
+.rank-badge {
+  padding: 3px 7px;
+  border-radius: 5px;
+  color: #8fd8ff;
+  background: rgba(85, 170, 255, .1);
+  border: 1px solid rgba(85, 170, 255, .24);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .8px;
+}
+.reputation-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: #8794a6;
+  font-size: 9px;
+}
+.reputation-row strong { color: #8fd8ff; }
+.reputation-meter {
+  height: 5px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255,255,255,.07);
+}
+.reputation-meter div {
+  height: 100%;
+  background: #62c8ff;
+  box-shadow: 0 0 10px rgba(98,200,255,.35);
+  transition: width .2s ease;
+}
+.station-npc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 9px;
+}
+.npc-card {
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 7px;
+  background: rgba(255,255,255,.025);
+  color: #dce5ee;
+  text-align: left;
+}
+.npc-card.available { cursor: pointer; }
+.npc-card.available:hover, .npc-card.selected {
+  border-color: rgba(98,200,255,.45);
+  background: rgba(98,200,255,.08);
+}
+.npc-card.locked { opacity: .48; cursor: not-allowed; }
+.npc-icon { font-size: 18px; }
+.npc-card strong { font-size: 10px; }
+.npc-card small { color: #7f8b9a; font-size: 7px; }
+@media (max-width: 520px) {
+  .station-npc-grid { grid-template-columns: 1fr 1fr; }
+}
